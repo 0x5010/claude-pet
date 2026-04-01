@@ -1,10 +1,10 @@
 #!/bin/bash
-# clawd-bar-hook.sh <EventName>
-# Reads stdin JSON from Claude Code, POSTs state to ClawdBar
+# claude-pet-hook.sh <EventName>
+# Reads stdin JSON from Claude Code, POSTs state to ClaudePet
 EVENT="$1"
 
 # Save stdin to temp file for reliable jq parsing
-TMPJSON=$(mktemp /tmp/clawd-hook-XXXXXX)
+TMPJSON=$(mktemp /tmp/claude-pet-hook-XXXXXX)
 cat > "$TMPJSON"
 
 JQ=/opt/homebrew/bin/jq

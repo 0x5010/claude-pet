@@ -1,5 +1,5 @@
 import Testing
-@testable import ClawdBarCore
+@testable import ClaudePetCore
 
 // MARK: - Basic State
 

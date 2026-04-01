@@ -3,10 +3,10 @@
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.clawd.bar</string>
+    <string>com.claude.pet</string>
     <key>ProgramArguments</key>
     <array>
-        <string>__CLAWD_BAR_BINARY__</string>
+        <string>__CLAUDE_PET_BINARY__</string>
     </array>
     <key>RunAtLoad</key>
     <true/>
@@ -16,8 +16,8 @@
         <false/>
     </dict>
     <key>StandardOutPath</key>
-    <string>/tmp/clawd-bar.log</string>
+    <string>/tmp/claude-pet.log</string>
     <key>StandardErrorPath</key>
-    <string>/tmp/clawd-bar.log</string>
+    <string>/tmp/claude-pet.log</string>
 </dict>
 </plist>

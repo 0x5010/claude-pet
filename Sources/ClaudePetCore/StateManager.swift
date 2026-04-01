@@ -69,7 +69,7 @@ public final class StateManager {
     public func handleEvent(sessionId: String, state: PetState, event: String, cwd: String = "",
                             transcriptPath: String = "", toolName: String = "", prompt: String = "",
                             permissionMode: String = "", message: String = "") {
-        let msg = "ClawdBar: event=\(event) state=\(state) session=\(sessionId) isOneshot=\(isOneshot) display=\(currentDisplayState)\n"
+        let msg = "ClaudePet: event=\(event) state=\(state) session=\(sessionId) isOneshot=\(isOneshot) display=\(currentDisplayState)\n"
         FileHandle.standardError.write(msg.data(using: .utf8)!)
         lastEventAt = Date()
 

@@ -1,5 +1,5 @@
 import Foundation
-import ClawdBarCore
+import ClaudePetCore
 
 public struct TranscriptInfo {
     public var model: String

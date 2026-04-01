@@ -1,4 +1,4 @@
-# ClawdBar
+# ClaudePet
 
 A macOS menu bar pet that shows your [Claude Code](https://docs.anthropic.com/en/docs/claude-code) working status as an animated pixel-art character.
 
@@ -6,7 +6,7 @@ Pure Swift/AppKit. ~3MB RAM. Near-zero CPU. No Electron. Zero dependencies.
 
 ## States
 
-ClawdBar automatically reacts to your Claude Code sessions in real-time:
+ClaudePet automatically reacts to your Claude Code sessions in real-time:
 
 <table>
 <tr>
@@ -25,10 +25,10 @@ ClawdBar automatically reacts to your Claude Code sessions in real-time:
 
 ## How It Works
 
-Claude Code fires [hooks](https://docs.anthropic.com/en/docs/claude-code/hooks) on session events. ClawdBar registers shell hooks that POST state changes to a local HTTP server (port 23333). The Swift app resolves the display state across multiple concurrent sessions and animates the menu bar icon.
+Claude Code fires [hooks](https://docs.anthropic.com/en/docs/claude-code/hooks) on session events. ClaudePet registers shell hooks that POST state changes to a local HTTP server (port 23333). The Swift app resolves the display state across multiple concurrent sessions and animates the menu bar icon.
 
 ```
-Claude Code → hook event (e.g. PreToolUse) → clawd-bar-hook.sh → curl POST :23333 → ClawdBar → animation
+Claude Code → hook event (e.g. PreToolUse) → claude-pet-hook.sh → curl POST :23333 → ClaudePet → animation
 ```
 
 Each Claude Code session gets its own menu bar icon (up to 5 concurrent sessions).
@@ -45,8 +45,8 @@ Each Claude Code session gets its own menu bar icon (up to 5 concurrent sessions
 ### Quick Start
 
 ```bash
-git clone https://github.com/SidKwok/clawd-bar.git ~/clawd-bar
-cd ~/clawd-bar
+git clone https://github.com/SidKwok/claude-pet.git ~/claude-pet
+cd ~/claude-pet
 swift build -c release
 bash hooks/install.sh
 ```
@@ -54,7 +54,7 @@ bash hooks/install.sh
 `install.sh` does three things:
 1. Registers 11 Claude Code hooks in `~/.claude/settings.json` (with duplicate detection)
 2. Installs a LaunchAgent for auto-start on login
-3. Launches ClawdBar immediately
+3. Launches ClaudePet immediately
 
 A small pixel character should appear in your menu bar.
 
@@ -65,7 +65,7 @@ Click the icon to see a menu with session info. Use the **Preview States** subme
 ### Manual Launch
 
 ```bash
-~/clawd-bar/.build/release/ClawdBar &
+~/claude-pet/.build/release/ClaudePet &
 ```
 
 ## Usage
@@ -73,7 +73,7 @@ Click the icon to see a menu with session info. Use the **Preview States** subme
 | Action | Result |
 |--------|--------|
 | **Click** icon | Session menu (status, model, context usage, git branch) |
-| **Option+Click** | Quit ClawdBar |
+| **Option+Click** | Quit ClaudePet |
 | Start Claude Code | New icon appears, shows thinking/working states |
 | Claude Code finishes | Happy bounce, then idle |
 | 60s no activity | Zzz sleeping |
@@ -91,8 +91,8 @@ The menu displays a color-coded context window usage bar:
 
 ```bash
 # Stop and remove auto-start
-launchctl unload ~/Library/LaunchAgents/com.clawd.bar.plist 2>/dev/null
-rm -f ~/Library/LaunchAgents/com.clawd.bar.plist
+launchctl unload ~/Library/LaunchAgents/com.claude.pet.plist 2>/dev/null
+rm -f ~/Library/LaunchAgents/com.claude.pet.plist
 
 # Remove hooks from Claude Code settings
 python3 -c "
@@ -101,25 +101,25 @@ p = os.path.expanduser('~/.claude/settings.json')
 s = json.load(open(p))
 for k in list(s.get('hooks', {}).keys()):
     s['hooks'][k] = [h for h in s['hooks'][k]
-                     if 'clawd-bar-hook' not in str(h)]
+                     if 'claude-pet-hook' not in str(h)]
     if not s['hooks'][k]: del s['hooks'][k]
 json.dump(s, open(p, 'w'), indent=2, ensure_ascii=False)
 print('Hooks removed')
 "
 
 # Delete app
-rm -rf ~/clawd-bar
+rm -rf ~/claude-pet
 ```
 
 ## Project Structure
 
 ```
-clawd-bar/
+claude-pet/
 ├── Sources/
-│   ├── ClawdBar/main.swift              # Entry point, wires components
-│   ├── ClawdBarCore/
+│   ├── ClaudePet/main.swift              # Entry point, wires components
+│   ├── ClaudePetCore/
 │   │   └── StateManager.swift           # State machine, multi-session priority resolution
-│   └── ClawdBarLib/
+│   └── ClaudePetLib/
 │       ├── HttpServer.swift             # NWListener on :23333, HTTP parser
 │       ├── MultiStatusBarController.swift # Per-session NSStatusItems (max 5), animation
 │       ├── NotificationBubble.swift     # Glass-morphism notification popup
@@ -129,9 +129,9 @@ clawd-bar/
 │   └── StateManagerTests.swift          # 45+ unit tests for state machine
 ├── hooks/
 │   ├── install.sh                       # One-command setup (hooks + LaunchAgent)
-│   └── clawd-bar-hook.sh               # Event→state mapper, POSTs to :23333
+│   └── claude-pet-hook.sh               # Event→state mapper, POSTs to :23333
 ├── assets/                              # Generated GIF previews
-└── com.clawd.bar.plist                  # LaunchAgent template
+└── com.claude.pet.plist                  # LaunchAgent template
 ```
 
 ## Development
@@ -141,12 +141,12 @@ clawd-bar/
 swift build
 
 # Build + restart app
-swift build && cp .build/debug/ClawdBar ClawdBar.app/Contents/MacOS/ClawdBar
-pkill -9 -f ClawdBar; sleep 2; open ClawdBar.app
+swift build && cp .build/debug/ClaudePet ClaudePet.app/Contents/MacOS/ClaudePet
+pkill -9 -f ClaudePet; sleep 2; open ClaudePet.app
 
 # Run tests
 swift build --build-tests 2>&1 && \
-  .build/debug/ClawdBarPackageTests.xctest/Contents/MacOS/ClawdBarPackageTests
+  .build/debug/ClaudePetPackageTests.xctest/Contents/MacOS/ClaudePetPackageTests
 
 # Regenerate GIF previews
 swift run GenerateGifs assets

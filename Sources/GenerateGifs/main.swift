@@ -1,8 +1,8 @@
 import AppKit
 import ImageIO
 import UniformTypeIdentifiers
-import ClawdBarLib
-import ClawdBarCore
+import ClaudePetLib
+import ClaudePetCore
 
 // Generate animated GIF previews of each pet state for README
 // Usage: swift run GenerateGifs [outputDir]

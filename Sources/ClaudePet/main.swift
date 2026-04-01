@@ -1,6 +1,6 @@
 import AppKit
-import ClawdBarLib
-import ClawdBarCore
+import ClaudePetLib
+import ClaudePetCore
 
 class AppDelegate: NSObject, NSApplicationDelegate {
     var multiStatusBarController: MultiStatusBarController?
@@ -29,7 +29,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         httpServer.start(port: 23333)
-        print("ClawdBar: running")
+        print("ClaudePet: running")
     }
 }
 

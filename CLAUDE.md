@@ -1,4 +1,4 @@
-# ClawdBar
+# ClaudePet
 
 macOS menu bar pixel pet showing Claude Code status. Pure Swift/AppKit, zero external dependencies.
 
@@ -6,20 +6,20 @@ macOS menu bar pixel pet showing Claude Code status. Pure Swift/AppKit, zero ext
 
 ```bash
 # Dev build + restart
-swift build && cp .build/debug/ClawdBar ClawdBar.app/Contents/MacOS/ClawdBar
-pkill -9 -f ClawdBar; sleep 2; open ClawdBar.app
+swift build && cp .build/debug/ClaudePet ClaudePet.app/Contents/MacOS/ClaudePet
+pkill -9 -f ClaudePet; sleep 2; open ClaudePet.app
 
 # Release build (for install.sh / LaunchAgent)
 swift build -c release
 
 # Run tests
-swift build --build-tests 2>&1 && .build/debug/ClawdBarPackageTests.xctest/Contents/MacOS/ClawdBarPackageTests
+swift build --build-tests 2>&1 && .build/debug/ClaudePetPackageTests.xctest/Contents/MacOS/ClaudePetPackageTests
 
 # Generate GIF previews for README
 swift run GenerateGifs assets
 ```
 
-**CRITICAL**: `swift build` outputs to `.build/debug/`, but `ClawdBar.app/Contents/MacOS/` is what `open ClawdBar.app` runs. Must copy binary after build.
+**CRITICAL**: `swift build` outputs to `.build/debug/`, but `ClaudePet.app/Contents/MacOS/` is what `open ClaudePet.app` runs. Must copy binary after build.
 
 ## Architecture
 
@@ -64,7 +64,7 @@ Key behaviors:
 
 ## Hooks
 
-`hooks/clawd-bar-hook.sh` reads Claude Code stdin JSON, maps event→state, POSTs to server.
+`hooks/claude-pet-hook.sh` reads Claude Code stdin JSON, maps event→state, POSTs to server.
 
 Event mapping:
 - SessionStart → idle, UserPromptSubmit → thinking, PreToolUse → working
@@ -103,4 +103,4 @@ Gotchas:
 - `NSGraphicsContext.current!` force-unwrap in PixelRenderer.render() — crash risk under GPU pressure.
 
 ### Logging
-- Every event writes to stderr (→ `/tmp/clawd-bar.log`). No log rotation — file grows unbounded.
+- Every event writes to stderr (→ `/tmp/claude-pet.log`). No log rotation — file grows unbounded.

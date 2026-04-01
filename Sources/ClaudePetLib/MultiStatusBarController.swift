@@ -1,5 +1,5 @@
 import AppKit
-import ClawdBarCore
+import ClaudePetCore
 import QuartzCore
 
 // MARK: - StatusBarInstance
@@ -305,7 +305,7 @@ private final class StatusBarInstance {
 
     // MARK: - State & animation (Core Animation driven)
 
-    private static let animationKey = "clawd-frame-animation"
+    private static let animationKey = "claude-pet-frame-animation"
     private static let transparentImage: NSImage = {
         let img = NSImage(size: NSSize(width: 22, height: 22))
         return img
@@ -324,7 +324,7 @@ private final class StatusBarInstance {
               let nsFrames = frameCache[state], !nsFrames.isEmpty else { return }
 
         // Remove existing animation sublayer
-        button.layer?.sublayers?.first(where: { $0.name == "clawd-icon" })?.removeFromSuperlayer()
+        button.layer?.sublayers?.first(where: { $0.name == "claude-pet-icon" })?.removeFromSuperlayer()
 
         // Set first frame for menu bar sizing; single-frame states use this directly
         button.image = nsFrames[0]
@@ -339,7 +339,7 @@ private final class StatusBarInstance {
 
         // Sublayer for CA-driven animation (avoids AppKit's expensive image-set pipeline)
         let iconLayer = CALayer()
-        iconLayer.name = "clawd-icon"
+        iconLayer.name = "claude-pet-icon"
         iconLayer.contentsGravity = .center
         iconLayer.magnificationFilter = .nearest
         iconLayer.contentsScale = NSScreen.main?.backingScaleFactor ?? 2.0
@@ -364,14 +364,14 @@ private final class StatusBarInstance {
     // MARK: - Timer control (sleep/wake)
 
     func pauseAnimation() {
-        let iconLayer = statusItem.button?.layer?.sublayers?.first(where: { $0.name == "clawd-icon" })
+        let iconLayer = statusItem.button?.layer?.sublayers?.first(where: { $0.name == "claude-pet-icon" })
         guard let layer = iconLayer else { return }
         layer.speed = 0
         layer.timeOffset = layer.convertTime(CACurrentMediaTime(), from: nil)
     }
 
     func resumeAnimation() {
-        let iconLayer = statusItem.button?.layer?.sublayers?.first(where: { $0.name == "clawd-icon" })
+        let iconLayer = statusItem.button?.layer?.sublayers?.first(where: { $0.name == "claude-pet-icon" })
         guard let layer = iconLayer else { return }
         let pausedTime = layer.timeOffset
         layer.speed = 1
@@ -387,7 +387,7 @@ private final class StatusBarInstance {
     // MARK: - Teardown
 
     func destroy() {
-        statusItem.button?.layer?.sublayers?.first(where: { $0.name == "clawd-icon" })?.removeFromSuperlayer()
+        statusItem.button?.layer?.sublayers?.first(where: { $0.name == "claude-pet-icon" })?.removeFromSuperlayer()
         NSStatusBar.system.removeStatusItem(statusItem)
     }
 }
@@ -463,7 +463,7 @@ public final class MultiStatusBarController {
     }
 
     func updateInstance(sessionId: String, state: PetState) {
-        // Auto-create instance if it doesn't exist (e.g. ClawdBar restarted mid-session)
+        // Auto-create instance if it doesn't exist (e.g. ClaudePet restarted mid-session)
         if instances[sessionId] == nil {
             let cwd = stateManager.sessions[sessionId]?.cwd ?? ""
             addInstance(sessionId: sessionId, cwd: cwd)

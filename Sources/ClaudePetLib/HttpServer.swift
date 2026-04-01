@@ -32,7 +32,7 @@ public final class HttpServer: @unchecked Sendable {
             let params = NWParameters.tcp
             listener = try NWListener(using: params, on: NWEndpoint.Port(rawValue: port)!)
         } catch {
-            print("ClawdBar: failed to create listener: \(error)")
+            print("ClaudePet: failed to create listener: \(error)")
             return
         }
 
@@ -43,9 +43,9 @@ public final class HttpServer: @unchecked Sendable {
         listener?.stateUpdateHandler = { state in
             switch state {
             case .ready:
-                print("ClawdBar: listening on port \(port)")
+                print("ClaudePet: listening on port \(port)")
             case .failed(let error):
-                print("ClawdBar: listener failed: \(error)")
+                print("ClaudePet: listener failed: \(error)")
             default:
                 break
             }

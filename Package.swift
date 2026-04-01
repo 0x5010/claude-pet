@@ -2,32 +2,32 @@
 import PackageDescription
 
 let package = Package(
-    name: "ClawdBar",
+    name: "ClaudePet",
     platforms: [.macOS(.v14)],
     targets: [
         // Pure Foundation target — no AppKit, safe to test headlessly
         .target(
-            name: "ClawdBarCore",
-            path: "Sources/ClawdBarCore"
+            name: "ClaudePetCore",
+            path: "Sources/ClaudePetCore"
         ),
         .target(
-            name: "ClawdBarLib",
-            dependencies: ["ClawdBarCore"],
-            path: "Sources/ClawdBarLib"
+            name: "ClaudePetLib",
+            dependencies: ["ClaudePetCore"],
+            path: "Sources/ClaudePetLib"
         ),
         .executableTarget(
-            name: "ClawdBar",
-            dependencies: ["ClawdBarLib"],
-            path: "Sources/ClawdBar"
+            name: "ClaudePet",
+            dependencies: ["ClaudePetLib"],
+            path: "Sources/ClaudePet"
         ),
         .executableTarget(
             name: "GenerateGifs",
-            dependencies: ["ClawdBarLib"],
+            dependencies: ["ClaudePetLib"],
             path: "Sources/GenerateGifs"
         ),
         .testTarget(
-            name: "ClawdBarTests",
-            dependencies: ["ClawdBarCore"],
+            name: "ClaudePetTests",
+            dependencies: ["ClaudePetCore"],
             path: "Tests",
             swiftSettings: [
                 .unsafeFlags([

@@ -1,5 +1,5 @@
 import AppKit
-import ClawdBarCore
+import ClaudePetCore
 
 public struct PixelRenderer {
     static let bodyColor = NSColor(red: 0xDE/255.0, green: 0x88/255.0, blue: 0x6D/255.0, alpha: 1)
