@@ -2,6 +2,7 @@ import AppKit
 import ClaudePetLib
 import ClaudePetCore
 
+@MainActor
 class AppDelegate: NSObject, NSApplicationDelegate {
     var multiStatusBarController: MultiStatusBarController?
     let stateManager = StateManager()

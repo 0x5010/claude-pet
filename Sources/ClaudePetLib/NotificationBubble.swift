@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 
+@MainActor
 public final class NotificationBubble: NSObject {
     private var panel: NSPanel?
     private var dismissTimer: Timer?
@@ -64,7 +65,9 @@ public final class NotificationBubble: NSObject {
         }
 
         dismissTimer = Timer.scheduledTimer(withTimeInterval: duration, repeats: false) { [weak self] _ in
-            self?.animateOut()
+            Task { @MainActor in
+                self?.animateOut()
+            }
         }
     }
 
@@ -97,37 +100,6 @@ private final class BubbleViewModel: ObservableObject, @unchecked Sendable {
 }
 
 // MARK: - SwiftUI Views
-
-@available(macOS 26.0, *)
-private struct GlassBubbleContent: View {
-    let title: String
-    let message: String
-    @ObservedObject var viewModel: BubbleViewModel
-
-    var body: some View {
-        GlassEffectContainer {
-            VStack(alignment: .leading, spacing: 2) {
-                if !title.isEmpty {
-                    Text(title)
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(.primary)
-                        .lineLimit(1)
-                }
-
-                Text(message)
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
-            .frame(minWidth: 180, maxWidth: 260)
-            .glassEffect(.clear, in: .rect(cornerRadius: 14))
-        }
-        .opacity(viewModel.isVisible ? 1 : 0)
-        .offset(y: viewModel.isVisible ? 0 : -14)
-    }
-}
 
 private struct GlassBubbleFallback: View {
     let title: String
@@ -163,10 +135,6 @@ private struct GlassBubbleView: View {
     @ObservedObject var viewModel: BubbleViewModel
 
     var body: some View {
-        if #available(macOS 26.0, *) {
-            GlassBubbleContent(title: title, message: message, viewModel: viewModel)
-        } else {
-            GlassBubbleFallback(title: title, message: message, viewModel: viewModel)
-        }
+        GlassBubbleFallback(title: title, message: message, viewModel: viewModel)
     }
 }

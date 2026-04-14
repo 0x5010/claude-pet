@@ -49,6 +49,7 @@ public struct Session: Sendable {
     public var meta: SessionMeta
 }
 
+@MainActor
 public final class StateManager {
     public private(set) var sessions: [String: Session] = [:]
     public private(set) var currentDisplayState: PetState = .idle
@@ -183,17 +184,20 @@ public final class StateManager {
             withTimeInterval: duration,
             repeats: false
         ) { [weak self] _ in
-            self?.isOneshot = false
-            if let forced = thenForce {
-                self?.updateDisplay(forced)
-                if let sid = sessionId {
-                    self?.onSessionStateChange?(sid, forced)
-                }
-            } else {
-                self?.resolve()
-                // After resolve, notify per-session with the resolved state for this session
-                if let sid = sessionId, let session = self?.sessions[sid] {
-                    self?.onSessionStateChange?(sid, session.state)
+            Task { @MainActor in
+                guard let self else { return }
+                self.isOneshot = false
+                if let forced = thenForce {
+                    self.updateDisplay(forced)
+                    if let sid = sessionId {
+                        self.onSessionStateChange?(sid, forced)
+                    }
+                } else {
+                    self.resolve()
+                    // After resolve, notify per-session with the resolved state for this session
+                    if let sid = sessionId, let session = self.sessions[sid] {
+                        self.onSessionStateChange?(sid, session.state)
+                    }
                 }
             }
         }

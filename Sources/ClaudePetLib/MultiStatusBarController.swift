@@ -4,6 +4,7 @@ import QuartzCore
 
 // MARK: - StatusBarInstance
 
+@MainActor
 private final class StatusBarInstance {
     let sessionId: String
     private(set) var cwd: String
@@ -506,12 +507,16 @@ public final class MultiStatusBarController {
     private func setupTimers() {
         // Cleanup stale sessions every 10s
         cleanupTimer = Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { [weak self] _ in
-            self?.stateManager.cleanStaleSessions()
+            Task { @MainActor in
+                self?.stateManager.cleanStaleSessions()
+            }
         }
 
         // Per-instance inactivity check every 10s
         inactivityTimer = Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { [weak self] _ in
-            self?.checkPerInstanceInactivity()
+            Task { @MainActor in
+                self?.checkPerInstanceInactivity()
+            }
         }
 
         // System sleep/wake
@@ -521,14 +526,18 @@ public final class MultiStatusBarController {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            self?.pauseAllAnimations()
+            Task { @MainActor in
+                self?.pauseAllAnimations()
+            }
         }
         ws.addObserver(
             forName: NSWorkspace.didWakeNotification,
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            self?.resumeAllAnimations()
+            Task { @MainActor in
+                self?.resumeAllAnimations()
+            }
         }
 
         // Screen change (external monitor connect/disconnect, resolution change)
@@ -537,7 +546,9 @@ public final class MultiStatusBarController {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            self?.reapplyAllAnimations()
+            Task { @MainActor in
+                self?.reapplyAllAnimations()
+            }
         }
     }
 

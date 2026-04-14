@@ -1,13 +1,16 @@
+import Foundation
 import Testing
 @testable import ClaudePetCore
 
 // MARK: - Basic State
 
+@MainActor
 @Test func initialStateIsIdle() {
     let sm = StateManager()
     #expect(sm.currentDisplayState == .idle)
 }
 
+@MainActor
 @Test func sessionCountStartsAtZero() {
     let sm = StateManager()
     #expect(sm.sessionCount == 0)
@@ -15,6 +18,7 @@ import Testing
 
 // MARK: - Priority Resolution
 
+@MainActor
 @Test func sessionUpdateResolvesHighestPriority() {
     let sm = StateManager()
     sm.handleEvent(sessionId: "a", state: .thinking, event: "UserPromptSubmit")
@@ -23,6 +27,7 @@ import Testing
     #expect(sm.currentDisplayState == .working)
 }
 
+@MainActor
 @Test func jugglingBeatsWorking() {
     let sm = StateManager()
     sm.handleEvent(sessionId: "a", state: .working, event: "PreToolUse")
@@ -30,6 +35,7 @@ import Testing
     #expect(sm.currentDisplayState == .juggling)
 }
 
+@MainActor
 @Test func resolveFallsToIdleWhenAllSessionsIdle() {
     let sm = StateManager()
     sm.handleEvent(sessionId: "a", state: .working, event: "PreToolUse")
@@ -38,6 +44,7 @@ import Testing
     #expect(sm.currentDisplayState == .thinking)
 }
 
+@MainActor
 @Test func resolveAfterHighPrioritySessionEnds() {
     let sm = StateManager()
     sm.handleEvent(sessionId: "a", state: .thinking, event: "UserPromptSubmit")
@@ -48,6 +55,7 @@ import Testing
     #expect(sm.currentDisplayState == .thinking)
 }
 
+@MainActor
 @Test func emptySessionsResolveToIdle() {
     let sm = StateManager()
     sm.handleEvent(sessionId: "a", state: .working, event: "PreToolUse")
@@ -58,6 +66,7 @@ import Testing
 
 // MARK: - Oneshot States
 
+@MainActor
 @Test func errorIsOneshotThenReturnsToResolved() {
     let sm = StateManager()
     sm.handleEvent(sessionId: "a", state: .working, event: "PreToolUse")
@@ -65,18 +74,22 @@ import Testing
     #expect(sm.currentDisplayState == .error)
     // Simulate oneshot expiry
     sm.oneshotTimer?.fire()
+    RunLoop.main.run(until: Date())
     #expect(sm.currentDisplayState == .working)
 }
 
+@MainActor
 @Test func notificationOneshotThenReturnsToResolved() {
     let sm = StateManager()
     sm.handleEvent(sessionId: "a", state: .working, event: "PreToolUse")
     sm.handleEvent(sessionId: "a", state: .notification, event: "Notification", message: "test")
     #expect(sm.currentDisplayState == .notification)
     sm.oneshotTimer?.fire()
+    RunLoop.main.run(until: Date())
     #expect(sm.currentDisplayState == .working)
 }
 
+@MainActor
 @Test func elicitationStaysPersistentUntilUserActs() {
     let sm = StateManager()
     sm.handleEvent(sessionId: "a", state: .working, event: "PreToolUse")
@@ -87,6 +100,7 @@ import Testing
     #expect(sm.currentDisplayState == .thinking)
 }
 
+@MainActor
 @Test func permissionRequestStaysPersistent() {
     let sm = StateManager()
     sm.handleEvent(sessionId: "a", state: .notification, event: "PermissionRequest")
@@ -98,6 +112,7 @@ import Testing
 
 // MARK: - Stop / Happy Flow
 
+@MainActor
 @Test func stopTriggersHappyThenIdle() {
     let sm = StateManager()
     sm.handleEvent(sessionId: "a", state: .working, event: "PreToolUse")
@@ -106,9 +121,11 @@ import Testing
     #expect(sm.currentDisplayState == .happy)
     // After oneshot expires, should be idle
     sm.oneshotTimer?.fire()
+    RunLoop.main.run(until: Date())
     #expect(sm.currentDisplayState == .idle)
 }
 
+@MainActor
 @Test func stopWithMessageTriggersNotification() {
     let sm = StateManager()
     var notifiedMessage: String?
@@ -117,6 +134,7 @@ import Testing
     #expect(notifiedMessage == "Done!")
 }
 
+@MainActor
 @Test func stopWithoutMessageDoesNotNotify() {
     let sm = StateManager()
     var notified = false
@@ -127,42 +145,50 @@ import Testing
 
 // MARK: - Debouncing (5s post-Stop window)
 
+@MainActor
 @Test func workingIgnoredWithin5sOfStop() {
     let sm = StateManager()
     sm.handleEvent(sessionId: "a", state: .working, event: "PreToolUse")
     sm.handleEvent(sessionId: "a", state: .idle, event: "Stop")
     // Expire oneshot to get to idle
     sm.oneshotTimer?.fire()
+    RunLoop.main.run(until: Date())
     #expect(sm.currentDisplayState == .idle)
     // Working event within 5s of Stop should be ignored
     sm.handleEvent(sessionId: "a", state: .working, event: "PreToolUse")
     #expect(sm.currentDisplayState == .idle)
 }
 
+@MainActor
 @Test func jugglingAlsoIgnoredWithin5sOfStop() {
     let sm = StateManager()
     sm.handleEvent(sessionId: "a", state: .working, event: "PreToolUse")
     sm.handleEvent(sessionId: "a", state: .idle, event: "Stop")
     sm.oneshotTimer?.fire()
+    RunLoop.main.run(until: Date())
     sm.handleEvent(sessionId: "a", state: .juggling, event: "SubagentStart")
     #expect(sm.currentDisplayState == .idle)
 }
 
+@MainActor
 @Test func globalStopBlocksWorkingFromDifferentSession() {
     let sm = StateManager()
     sm.handleEvent(sessionId: "a", state: .working, event: "PreToolUse")
     sm.handleEvent(sessionId: "a", state: .idle, event: "Stop")
     sm.oneshotTimer?.fire()
+    RunLoop.main.run(until: Date())
     // Different session's working event also blocked by globalStoppedAt
     sm.handleEvent(sessionId: "b", state: .working, event: "PreToolUse")
     #expect(sm.currentDisplayState == .idle)
 }
 
+@MainActor
 @Test func userPromptSubmitClearsStoppedAt() {
     let sm = StateManager()
     sm.handleEvent(sessionId: "a", state: .idle, event: "Stop")
     // Expire oneshot
     sm.oneshotTimer?.fire()
+    RunLoop.main.run(until: Date())
     sm.handleEvent(sessionId: "a", state: .thinking, event: "UserPromptSubmit")
     #expect(sm.currentDisplayState == .thinking)
     // Now working should be accepted
@@ -170,10 +196,12 @@ import Testing
     #expect(sm.currentDisplayState == .working)
 }
 
+@MainActor
 @Test func thinkingNotBlockedByStopDebounce() {
     let sm = StateManager()
     sm.handleEvent(sessionId: "a", state: .idle, event: "Stop")
     sm.oneshotTimer?.fire()
+    RunLoop.main.run(until: Date())
     // thinking is NOT blocked (only working/juggling are)
     sm.handleEvent(sessionId: "a", state: .thinking, event: "UserPromptSubmit")
     #expect(sm.currentDisplayState == .thinking)
@@ -181,6 +209,7 @@ import Testing
 
 // MARK: - Session Lifecycle
 
+@MainActor
 @Test func sessionEndRemovesSession() {
     let sm = StateManager()
     sm.handleEvent(sessionId: "a", state: .working, event: "PreToolUse")
@@ -188,6 +217,7 @@ import Testing
     #expect(sm.sessionCount == 0)
 }
 
+@MainActor
 @Test func multipleSessionsTrackedIndependently() {
     let sm = StateManager()
     sm.handleEvent(sessionId: "a", state: .thinking, event: "UserPromptSubmit", cwd: "/project-a")
@@ -199,6 +229,7 @@ import Testing
     #expect(sm.sessions["c"]?.cwd == "/project-c")
 }
 
+@MainActor
 @Test func sessionStartCreatesIdleSession() {
     let sm = StateManager()
     sm.handleEvent(sessionId: "a", state: .idle, event: "SessionStart", cwd: "/test")
@@ -209,6 +240,7 @@ import Testing
 
 // MARK: - Metadata Updates
 
+@MainActor
 @Test func metadataUpdatesOnSubsequentEvents() {
     let sm = StateManager()
     sm.handleEvent(sessionId: "a", state: .idle, event: "SessionStart", cwd: "/old")
@@ -218,12 +250,14 @@ import Testing
     #expect(sm.sessions["a"]?.meta.lastPrompt == "fix the bug")
 }
 
+@MainActor
 @Test func toolNameTracked() {
     let sm = StateManager()
     sm.handleEvent(sessionId: "a", state: .working, event: "PreToolUse", toolName: "Edit")
     #expect(sm.sessions["a"]?.meta.lastTool == "Edit")
 }
 
+@MainActor
 @Test func emptyFieldsDoNotOverwriteExisting() {
     let sm = StateManager()
     sm.handleEvent(sessionId: "a", state: .idle, event: "SessionStart",
@@ -236,6 +270,7 @@ import Testing
     #expect(sm.sessions["a"]?.meta.permissionMode == "bypassPermissions")
 }
 
+@MainActor
 @Test func updateContextStoresMetadata() {
     let sm = StateManager()
     sm.handleEvent(sessionId: "a", state: .idle, event: "SessionStart")
@@ -248,6 +283,7 @@ import Testing
     #expect(meta?.sessionName == "my-session")
 }
 
+@MainActor
 @Test func updateContextIgnoresUnknownSession() {
     let sm = StateManager()
     // Should not crash or create session
@@ -256,6 +292,7 @@ import Testing
     #expect(sm.sessionCount == 0)
 }
 
+@MainActor
 @Test func updateContextPreservesExistingNonEmptyFields() {
     let sm = StateManager()
     sm.handleEvent(sessionId: "a", state: .idle, event: "SessionStart")
@@ -271,6 +308,7 @@ import Testing
 
 // MARK: - Active States Persist (no stale decay)
 
+@MainActor
 @Test func workingPersistsAfter30s() {
     let sm = StateManager()
     sm.handleEvent(sessionId: "a", state: .working, event: "PreToolUse")
@@ -281,6 +319,7 @@ import Testing
     #expect(sm.currentDisplayState == .working)
 }
 
+@MainActor
 @Test func thinkingPersistsAfter30s() {
     let sm = StateManager()
     sm.handleEvent(sessionId: "a", state: .thinking, event: "UserPromptSubmit")
@@ -289,6 +328,7 @@ import Testing
     #expect(sm.sessions["a"]?.state == .thinking)
 }
 
+@MainActor
 @Test func jugglingPersistsAfter30s() {
     let sm = StateManager()
     sm.handleEvent(sessionId: "a", state: .juggling, event: "SubagentStart")
@@ -299,24 +339,29 @@ import Testing
 
 // MARK: - Inactivity
 
+@MainActor
 @Test func inactivitySleep() {
     let sm = StateManager()
     sm.handleEvent(sessionId: "a", state: .idle, event: "Stop")
     sm.oneshotTimer?.fire()
+    RunLoop.main.run(until: Date())
     sm.backdateLastEvent(seconds: 61)
     sm.checkInactivity()
     #expect(sm.currentDisplayState == .sleeping)
 }
 
+@MainActor
 @Test func noInactivityWithin60s() {
     let sm = StateManager()
     sm.handleEvent(sessionId: "a", state: .idle, event: "SessionStart")
     sm.oneshotTimer?.fire()
+    RunLoop.main.run(until: Date())
     sm.backdateLastEvent(seconds: 59)
     sm.checkInactivity()
     #expect(sm.currentDisplayState == .idle)  // not sleeping
 }
 
+@MainActor
 @Test func activeSessionBlocksInactivitySleep() {
     let sm = StateManager()
     sm.handleEvent(sessionId: "a", state: .working, event: "PreToolUse")
@@ -326,6 +371,7 @@ import Testing
     #expect(sm.currentDisplayState == .working)
 }
 
+@MainActor
 @Test func activeThinkingBlocksInactivitySleep() {
     let sm = StateManager()
     sm.handleEvent(sessionId: "a", state: .thinking, event: "UserPromptSubmit")
@@ -334,6 +380,7 @@ import Testing
     #expect(sm.currentDisplayState == .thinking)
 }
 
+@MainActor
 @Test func activeJugglingBlocksInactivitySleep() {
     let sm = StateManager()
     sm.handleEvent(sessionId: "a", state: .juggling, event: "SubagentStart")
@@ -344,6 +391,7 @@ import Testing
 
 // MARK: - Callbacks
 
+@MainActor
 @Test func sessionAddedCallbackFired() {
     let sm = StateManager()
     var addedId: String?
@@ -357,6 +405,7 @@ import Testing
     #expect(addedCwd == "/tmp/test")
 }
 
+@MainActor
 @Test func sessionAddedNotFiredForExistingSession() {
     let sm = StateManager()
     var addedCount = 0
@@ -366,6 +415,7 @@ import Testing
     #expect(addedCount == 1)
 }
 
+@MainActor
 @Test func sessionRemovedCallbackFired() {
     let sm = StateManager()
     sm.handleEvent(sessionId: "abc", state: .thinking, event: "UserPromptSubmit")
@@ -376,6 +426,7 @@ import Testing
     #expect(sm.sessionCount == 0)
 }
 
+@MainActor
 @Test func sessionStateChangeCallbackFired() {
     let sm = StateManager()
     var changes: [(String, PetState)] = []
@@ -386,6 +437,7 @@ import Testing
     #expect(changes.last?.1 == .working)
 }
 
+@MainActor
 @Test func onStateChangeCallbackFired() {
     let sm = StateManager()
     var displayStates: [PetState] = []
@@ -396,6 +448,7 @@ import Testing
     #expect(displayStates.contains(.working))
 }
 
+@MainActor
 @Test func onStateChangeNotFiredWhenSameState() {
     let sm = StateManager()
     var callCount = 0
@@ -406,6 +459,7 @@ import Testing
     #expect(callCount == countAfterFirst)  // no duplicate callback
 }
 
+@MainActor
 @Test func notificationCallbackWithMessage() {
     let sm = StateManager()
     var messages: [(String, String)] = []
@@ -416,6 +470,7 @@ import Testing
     #expect(messages[0].1 == "hello")
 }
 
+@MainActor
 @Test func notificationCallbackNotFiredWithEmptyMessage() {
     let sm = StateManager()
     var notified = false
@@ -426,6 +481,7 @@ import Testing
 
 // MARK: - PetState Priority
 
+@MainActor
 @Test func petStatePriorityOrder() {
     #expect(PetState.sleeping.priority < PetState.idle.priority)
     #expect(PetState.idle.priority < PetState.thinking.priority)
@@ -438,28 +494,34 @@ import Testing
 
 // MARK: - formatModelName
 
+@MainActor
 @Test func formatModelNameOpus() {
     #expect(formatModelName("claude-opus-4-6") == "Opus 4.6")
 }
 
+@MainActor
 @Test func formatModelNameSonnet() {
     #expect(formatModelName("claude-sonnet-4-6") == "Sonnet 4.6")
 }
 
+@MainActor
 @Test func formatModelNameHaiku() {
     #expect(formatModelName("claude-haiku-4-5") == "Haiku 4.5")
 }
 
+@MainActor
 @Test func formatModelNameUnknownPassthrough() {
     #expect(formatModelName("gpt-4o") == "gpt-4o")
 }
 
+@MainActor
 @Test func formatModelNameShortStringReturnsNameOnly() {
     #expect(formatModelName("opus") == "Opus")
 }
 
 // MARK: - Edge Cases
 
+@MainActor
 @Test func sessionEndForNonexistentSessionIsNoOp() {
     let sm = StateManager()
     sm.handleEvent(sessionId: "ghost", state: .sleeping, event: "SessionEnd")
@@ -467,14 +529,17 @@ import Testing
     #expect(sm.currentDisplayState == .idle)
 }
 
+@MainActor
 @Test func rapidStopDoesNotCrash() {
     let sm = StateManager()
     sm.handleEvent(sessionId: "a", state: .idle, event: "Stop")
     sm.handleEvent(sessionId: "a", state: .idle, event: "Stop")
     sm.oneshotTimer?.fire()
+    RunLoop.main.run(until: Date())
     #expect(sm.currentDisplayState == .idle)
 }
 
+@MainActor
 @Test func errorDuringOneshotHappyOverrides() {
     let sm = StateManager()
     sm.handleEvent(sessionId: "a", state: .working, event: "PreToolUse")
@@ -485,6 +550,7 @@ import Testing
     #expect(sm.currentDisplayState == .error)
 }
 
+@MainActor
 @Test func subagentStopResetsToIdle() {
     let sm = StateManager()
     sm.handleEvent(sessionId: "a", state: .juggling, event: "SubagentStart")
