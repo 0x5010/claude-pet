@@ -6,6 +6,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 INSTALL_DIR="$HOME/.claude/claude-pet"
 SETTINGS="$HOME/.claude/settings.json"
 HOOK_SCRIPT="claude-pet-hook.sh"
+STATUSLINE_SCRIPT="claude-pet-statusline.sh"
 PLIST_SRC="$SCRIPT_DIR/com.claude.pet.plist"
 PLIST_DST="$HOME/Library/LaunchAgents/com.claude.pet.plist"
 
@@ -27,17 +28,21 @@ fi
 mkdir -p "$INSTALL_DIR"
 cp "$BINARY" "$INSTALL_DIR/ClaudePet"
 cp "$SCRIPT_DIR/hooks/$HOOK_SCRIPT" "$INSTALL_DIR/$HOOK_SCRIPT"
-chmod +x "$INSTALL_DIR/ClaudePet" "$INSTALL_DIR/$HOOK_SCRIPT"
+cp "$SCRIPT_DIR/hooks/$STATUSLINE_SCRIPT" "$INSTALL_DIR/$STATUSLINE_SCRIPT"
+chmod +x "$INSTALL_DIR/ClaudePet" "$INSTALL_DIR/$HOOK_SCRIPT" "$INSTALL_DIR/$STATUSLINE_SCRIPT"
 echo "ClaudePet: installed to $INSTALL_DIR"
 
-# Step 3: Register hooks (remove old entries, add new ones)
+# Step 3: Register hooks + statusLine
 export CLAUDE_PET_HOOK_PATH="$INSTALL_DIR/$HOOK_SCRIPT"
+export CLAUDE_PET_STATUSLINE_PATH="$INSTALL_DIR/$STATUSLINE_SCRIPT"
 /usr/bin/python3 << 'PYEOF'
 import json, os
 
 settings_path = os.path.expanduser("~/.claude/settings.json")
 hook_path = os.environ["CLAUDE_PET_HOOK_PATH"]
-marker = "claude-pet-hook.sh"
+statusline_path = os.environ["CLAUDE_PET_STATUSLINE_PATH"]
+hook_marker = "claude-pet-hook.sh"
+statusline_marker = "claude-pet-statusline.sh"
 events = ["SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUseFailure",
           "SubagentStart", "SubagentStop", "Notification", "Elicitation",
           "PermissionRequest", "Stop", "SessionEnd"]
@@ -55,7 +60,7 @@ for event in list(hooks.keys()):
     for entry in original:
         cmd = entry.get("command", "")
         nested = entry.get("hooks", [])
-        is_claude_pet = marker in cmd or any(marker in h.get("command", "") for h in nested)
+        is_claude_pet = hook_marker in cmd or any(hook_marker in h.get("command", "") for h in nested)
         if is_claude_pet:
             removed += 1
         else:
@@ -73,11 +78,23 @@ for event in events:
     })
     added += 1
 
+existing_statusline = settings.get("statusLine")
+replaced_statusline = 0
+if isinstance(existing_statusline, dict):
+    existing_command = existing_statusline.get("command", "")
+    if statusline_marker in existing_command:
+        replaced_statusline = 1
+
+settings["statusLine"] = {
+    "type": "command",
+    "command": f'sh "{statusline_path}"',
+}
+
 with open(settings_path, "w") as f:
     json.dump(settings, f, indent=2, ensure_ascii=False)
     f.write("\n")
 
-print(f"ClaudePet: registered {added} hooks (removed {removed} old entries)")
+print(f"ClaudePet: registered {added} hooks (removed {removed} old entries), statusLine={'updated' if replaced_statusline else 'installed'}")
 PYEOF
 
 # Step 4: Setup LaunchAgent

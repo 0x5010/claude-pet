@@ -45,7 +45,7 @@ Each Claude Code session gets its own menu bar icon (up to 5 concurrent sessions
 ### Quick Start
 
 ```bash
-git clone https://github.com/SidKwok/claude-pet.git ~/claude-pet
+git clone https://github.com/0x5010/claude-pet.git ~/claude-pet
 cd ~/claude-pet
 swift build -c release
 bash hooks/install.sh
