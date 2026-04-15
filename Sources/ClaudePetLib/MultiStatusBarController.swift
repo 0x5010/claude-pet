@@ -97,19 +97,53 @@ private final class StatusBarInstance {
         return "\(repo):\(branch)"
     }
 
-    /// Color matching statusline: ≤40% green, ≤65% yellow, ≤80% orange, >80% red
-    private func contextBarColor(percent: Int) -> NSColor {
-        if percent <= 40 { return .systemGreen }
-        if percent <= 65 { return .systemYellow }
-        if percent <= 80 { return NSColor(red: 1.0, green: 0.53, blue: 0, alpha: 1) } // orange #FF8700
-        return .systemRed
+    private func contextBarColor(for band: ContextBand, percent: Int) -> NSColor {
+        switch band {
+        case .normal:
+            return percent <= 40 ? .systemGreen : .systemYellow
+        case .cautious:
+            return .systemYellow
+        case .compactSoon:
+            return NSColor(red: 1.0, green: 0.53, blue: 0, alpha: 1)
+        case .urgent, .critical:
+            return .systemRed
+        }
     }
 
-    /// Context usage card with progress bar + compact marker
-    private func makeContextCard(percent: Int) -> NSView {
+    private func contextBandLabel(_ band: ContextBand) -> String {
+        switch band {
+        case .normal: return "Healthy"
+        case .cautious: return "Be careful"
+        case .compactSoon: return "Compact soon"
+        case .urgent: return "Near limit"
+        case .critical: return "Critical"
+        }
+    }
+
+    private func contextHintText(meta: SessionMeta) -> String {
+        switch meta.contextBand {
+        case .normal:
+            return "Healthy context window"
+        case .cautious:
+            return "开始谨慎，先控制上下文膨胀"
+        case .compactSoon:
+            return "compact soon，避免继续堆上下文"
+        case .urgent:
+            return meta.highContextStrikeCount >= 4
+                ? "你已经连续多次处在高 context 区间"
+                : "这个 session 接近窗口极限"
+        case .critical:
+            return meta.highContextStrikeCount >= 4
+                ? "建议尽快结束当前子任务并开新 session"
+                : "Critical — wrap up and restart"
+        }
+    }
+
+    /// Context usage companion card with progress bar + suggestion
+    private func makeContextCard(meta: SessionMeta) -> NSView {
         let w = Self.menuWidth
-        let compactPct = 80  // auto-compact threshold
-        let h: CGFloat = 64
+        let percent = Int(meta.contextUsedPct)
+        let h: CGFloat = 76
         let wrapper = NSView(frame: NSRect(x: 0, y: 0, width: w, height: h + 4))
 
         let card = NSView(frame: NSRect(x: Self.cardInset, y: 2, width: w - Self.cardInset * 2, height: h))
@@ -120,16 +154,14 @@ private final class StatusBarInstance {
 
         let cw = card.frame.width
         let p = Self.cardPad
-        let barColor = contextBarColor(percent: percent)
+        let barColor = contextBarColor(for: meta.contextBand, percent: percent)
 
-        // Title (bold, left)
         let titleLabel = NSTextField(labelWithString: "Context Usage")
         titleLabel.font = NSFont.systemFont(ofSize: 13, weight: .semibold)
         titleLabel.textColor = .labelColor
         titleLabel.frame = NSRect(x: p, y: h - 22, width: cw - p * 2 - 50, height: 18)
         card.addSubview(titleLabel)
 
-        // Percentage (right, colored)
         let pctLabel = NSTextField(labelWithString: "\(percent)%")
         pctLabel.font = NSFont.systemFont(ofSize: 13, weight: .semibold)
         pctLabel.textColor = barColor
@@ -137,18 +169,19 @@ private final class StatusBarInstance {
         pctLabel.frame = NSRect(x: cw - p - 50, y: h - 22, width: 50, height: 18)
         card.addSubview(pctLabel)
 
-        // Subtitle: compact info (above progress bar)
-        let remaining = max(0, compactPct - percent)
-        let subText = remaining > 0
-            ? "Auto-compact at \(compactPct)% (\(remaining)% remaining)"
-            : "⚠ Auto-compact zone"
-        let subLabel = NSTextField(labelWithString: subText)
-        subLabel.font = NSFont.systemFont(ofSize: 10)
-        subLabel.textColor = .tertiaryLabelColor
-        subLabel.frame = NSRect(x: p, y: h - 36, width: cw - p * 2, height: 12)
-        card.addSubview(subLabel)
+        let bandLabel = NSTextField(labelWithString: contextBandLabel(meta.contextBand))
+        bandLabel.font = NSFont.systemFont(ofSize: 10, weight: .medium)
+        bandLabel.textColor = barColor
+        bandLabel.frame = NSRect(x: p, y: h - 38, width: cw - p * 2, height: 12)
+        card.addSubview(bandLabel)
 
-        // Progress bar
+        let hintLabel = NSTextField(wrappingLabelWithString: contextHintText(meta: meta))
+        hintLabel.font = NSFont.systemFont(ofSize: 10)
+        hintLabel.textColor = .tertiaryLabelColor
+        hintLabel.maximumNumberOfLines = 2
+        hintLabel.frame = NSRect(x: p, y: h - 58, width: cw - p * 2, height: 22)
+        card.addSubview(hintLabel)
+
         let barY: CGFloat = 8
         let barW = cw - p * 2
         let barBg = NSView(frame: NSRect(x: p, y: barY, width: barW, height: 5))
@@ -163,13 +196,6 @@ private final class StatusBarInstance {
         barFill.layer?.backgroundColor = barColor.cgColor
         barFill.layer?.cornerRadius = 2.5
         card.addSubview(barFill)
-
-        // Compact threshold marker (vertical line at 80%)
-        let compactX = p + barW * CGFloat(compactPct) / 100.0
-        let marker = NSView(frame: NSRect(x: compactX - 0.5, y: barY - 2, width: 1, height: 9))
-        marker.wantsLayer = true
-        marker.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.5).cgColor
-        card.addSubview(marker)
 
         return wrapper
     }
@@ -233,10 +259,10 @@ private final class StatusBarInstance {
             menu.addItem(modelItem)
         }
 
-        // Context Usage card (from statusLine data)
+        // Context Usage companion card
         if let m = meta, m.contextUsedPct > 0 {
             let contextItem = NSMenuItem()
-            contextItem.view = makeContextCard(percent: Int(m.contextUsedPct))
+            contextItem.view = makeContextCard(meta: m)
             menu.addItem(contextItem)
         }
 

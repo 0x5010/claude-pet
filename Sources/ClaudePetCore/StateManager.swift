@@ -29,6 +29,20 @@ public enum PetState: String, Equatable, Sendable {
     }
 }
 
+public enum ContextBand: String, Equatable, Sendable {
+    case normal, cautious, compactSoon, urgent, critical
+
+    var level: Int {
+        switch self {
+        case .normal: return 0
+        case .cautious: return 1
+        case .compactSoon: return 2
+        case .urgent: return 3
+        case .critical: return 4
+        }
+    }
+}
+
 public struct SessionMeta: Sendable {
     public var transcriptPath: String
     public var lastPrompt: String
@@ -39,6 +53,11 @@ public struct SessionMeta: Sendable {
     public var contextCurrentUsage: Int = 0
     public var modelName: String = ""
     public var sessionName: String = ""
+    public var contextBand: ContextBand = .normal
+    public var lastAlertBand: ContextBand = .normal
+    public var highContextStrikeCount: Int = 0
+    public var lastHighContextAt: Date?
+    public var lastSuggestionKey: String = ""
 }
 
 public struct Session: Sendable {
@@ -235,10 +254,23 @@ public final class StateManager {
 
     public func updateContext(sessionId: String, usedPct: Double, currentUsage: Int, modelName: String, sessionName: String) {
         guard var session = sessions[sessionId] else { return }
+        let previousMeta = session.meta
+
         session.meta.contextUsedPct = usedPct
         session.meta.contextCurrentUsage = currentUsage
         if !modelName.isEmpty { session.meta.modelName = modelName }
         if !sessionName.isEmpty { session.meta.sessionName = sessionName }
+
+        let newBand = contextBand(for: usedPct)
+        session.meta.contextBand = newBand
+        updateHighContextStrike(for: &session.meta, previousBand: previousMeta.contextBand, newBand: newBand)
+
+        if let alert = contextAlert(for: session, previousMeta: previousMeta) {
+            session.meta.lastAlertBand = newBand
+            session.meta.lastSuggestionKey = alert.key
+            onSessionNotification?(sessionId, alert.message)
+        }
+
         sessions[sessionId] = session
     }
 
@@ -254,6 +286,86 @@ public final class StateManager {
         if elapsed >= 60 {
             updateDisplay(.sleeping)
         }
+    }
+
+    private func contextBand(for usedPct: Double) -> ContextBand {
+        if usedPct >= 95 { return .critical }
+        if usedPct >= 85 { return .urgent }
+        if usedPct >= 75 { return .compactSoon }
+        if usedPct >= 60 { return .cautious }
+        return .normal
+    }
+
+    private func updateHighContextStrike(for meta: inout SessionMeta, previousBand: ContextBand, newBand: ContextBand) {
+        let now = Date()
+        if newBand == .normal {
+            if let lastHighContextAt = meta.lastHighContextAt,
+               now.timeIntervalSince(lastHighContextAt) > 600 {
+                meta.highContextStrikeCount = 0
+                meta.lastHighContextAt = nil
+            }
+            meta.lastAlertBand = .normal
+            meta.lastSuggestionKey = ""
+            return
+        }
+
+        if previousBand == .normal || newBand.level != previousBand.level {
+            if let lastHighContextAt = meta.lastHighContextAt,
+               now.timeIntervalSince(lastHighContextAt) > 180 {
+                meta.highContextStrikeCount = 0
+            }
+            meta.highContextStrikeCount += 1
+            meta.lastHighContextAt = now
+            return
+        }
+
+        if let lastHighContextAt = meta.lastHighContextAt,
+           now.timeIntervalSince(lastHighContextAt) > 180 {
+            meta.highContextStrikeCount += 1
+            meta.lastHighContextAt = now
+        }
+    }
+
+    private func contextSuggestion(for meta: SessionMeta) -> (key: String, message: String) {
+        switch meta.contextBand {
+        case .critical:
+            return (
+                key: meta.highContextStrikeCount >= 4 ? "critical-strikes" : "critical",
+                message: meta.highContextStrikeCount >= 4
+                    ? "你已经连续 4 次处在高 context 区间，建议尽快结束当前子任务并开新 session"
+                    : "这个 session 接近窗口极限，建议尽快结束当前子任务并开新 session"
+            )
+        case .urgent:
+            return (
+                key: meta.highContextStrikeCount >= 4 ? "urgent-strikes" : "urgent",
+                message: meta.highContextStrikeCount >= 4
+                    ? "你已经连续 4 次处在高 context 区间，建议 compact 或尽快收尾当前子任务"
+                    : "这个 session 接近窗口极限，建议 compact soon，并准备收尾当前子任务"
+            )
+        case .compactSoon:
+            return (key: "compactSoon", message: "context 已经偏高，compact soon")
+        case .cautious:
+            return (key: "cautious", message: "context 到 60% 了，开始谨慎")
+        case .normal:
+            return (key: "", message: "")
+        }
+    }
+
+    private func contextAlert(for session: Session, previousMeta: SessionMeta) -> (key: String, message: String)? {
+        let meta = session.meta
+        guard meta.contextBand != .normal else { return nil }
+
+        let suggestion = contextSuggestion(for: meta)
+        if suggestion.key.isEmpty { return nil }
+
+        let bandEscalated = meta.contextBand != previousMeta.contextBand && meta.contextBand.rawValue != previousMeta.contextBand.rawValue
+        let strikesReached = meta.highContextStrikeCount >= 4 && previousMeta.highContextStrikeCount < 4
+        let suggestionChanged = previousMeta.lastSuggestionKey != suggestion.key
+
+        if bandEscalated || strikesReached || suggestionChanged {
+            return suggestion
+        }
+        return nil
     }
 
     // MARK: - Test Helpers

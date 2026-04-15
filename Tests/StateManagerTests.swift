@@ -2,6 +2,23 @@ import Foundation
 import Testing
 @testable import ClaudePetCore
 
+@MainActor
+private func waitUntil(_ condition: () -> Bool, timeout: TimeInterval = 0.2) async -> Bool {
+    let deadline = Date().addingTimeInterval(timeout)
+    while Date() < deadline {
+        if condition() { return true }
+        await Task.yield()
+        try? await Task.sleep(nanoseconds: 10_000_000)
+    }
+    return condition()
+}
+
+@MainActor
+private func fireOneshot(_ sm: StateManager, expecting expectedState: PetState) async {
+    sm.oneshotTimer?.fire()
+    #expect(await waitUntil { sm.currentDisplayState == expectedState })
+}
+
 // MARK: - Basic State
 
 @MainActor
@@ -67,25 +84,23 @@ import Testing
 // MARK: - Oneshot States
 
 @MainActor
-@Test func errorIsOneshotThenReturnsToResolved() {
+@Test func errorIsOneshotThenReturnsToResolved() async {
     let sm = StateManager()
     sm.handleEvent(sessionId: "a", state: .working, event: "PreToolUse")
     sm.handleEvent(sessionId: "a", state: .error, event: "PostToolUseFailure")
     #expect(sm.currentDisplayState == .error)
     // Simulate oneshot expiry
-    sm.oneshotTimer?.fire()
-    RunLoop.main.run(until: Date())
+    await fireOneshot(sm, expecting: .working)
     #expect(sm.currentDisplayState == .working)
 }
 
 @MainActor
-@Test func notificationOneshotThenReturnsToResolved() {
+@Test func notificationOneshotThenReturnsToResolved() async {
     let sm = StateManager()
     sm.handleEvent(sessionId: "a", state: .working, event: "PreToolUse")
     sm.handleEvent(sessionId: "a", state: .notification, event: "Notification", message: "test")
     #expect(sm.currentDisplayState == .notification)
-    sm.oneshotTimer?.fire()
-    RunLoop.main.run(until: Date())
+    await fireOneshot(sm, expecting: .working)
     #expect(sm.currentDisplayState == .working)
 }
 
@@ -113,15 +128,14 @@ import Testing
 // MARK: - Stop / Happy Flow
 
 @MainActor
-@Test func stopTriggersHappyThenIdle() {
+@Test func stopTriggersHappyThenIdle() async {
     let sm = StateManager()
     sm.handleEvent(sessionId: "a", state: .working, event: "PreToolUse")
     sm.handleEvent(sessionId: "a", state: .idle, event: "Stop")
     // Stop triggers happy oneshot
     #expect(sm.currentDisplayState == .happy)
     // After oneshot expires, should be idle
-    sm.oneshotTimer?.fire()
-    RunLoop.main.run(until: Date())
+    await fireOneshot(sm, expecting: .idle)
     #expect(sm.currentDisplayState == .idle)
 }
 
@@ -146,13 +160,12 @@ import Testing
 // MARK: - Debouncing (5s post-Stop window)
 
 @MainActor
-@Test func workingIgnoredWithin5sOfStop() {
+@Test func workingIgnoredWithin5sOfStop() async {
     let sm = StateManager()
     sm.handleEvent(sessionId: "a", state: .working, event: "PreToolUse")
     sm.handleEvent(sessionId: "a", state: .idle, event: "Stop")
     // Expire oneshot to get to idle
-    sm.oneshotTimer?.fire()
-    RunLoop.main.run(until: Date())
+    await fireOneshot(sm, expecting: .idle)
     #expect(sm.currentDisplayState == .idle)
     // Working event within 5s of Stop should be ignored
     sm.handleEvent(sessionId: "a", state: .working, event: "PreToolUse")
@@ -160,35 +173,32 @@ import Testing
 }
 
 @MainActor
-@Test func jugglingAlsoIgnoredWithin5sOfStop() {
+@Test func jugglingAlsoIgnoredWithin5sOfStop() async {
     let sm = StateManager()
     sm.handleEvent(sessionId: "a", state: .working, event: "PreToolUse")
     sm.handleEvent(sessionId: "a", state: .idle, event: "Stop")
-    sm.oneshotTimer?.fire()
-    RunLoop.main.run(until: Date())
+    await fireOneshot(sm, expecting: .idle)
     sm.handleEvent(sessionId: "a", state: .juggling, event: "SubagentStart")
     #expect(sm.currentDisplayState == .idle)
 }
 
 @MainActor
-@Test func globalStopBlocksWorkingFromDifferentSession() {
+@Test func globalStopBlocksWorkingFromDifferentSession() async {
     let sm = StateManager()
     sm.handleEvent(sessionId: "a", state: .working, event: "PreToolUse")
     sm.handleEvent(sessionId: "a", state: .idle, event: "Stop")
-    sm.oneshotTimer?.fire()
-    RunLoop.main.run(until: Date())
+    await fireOneshot(sm, expecting: .idle)
     // Different session's working event also blocked by globalStoppedAt
     sm.handleEvent(sessionId: "b", state: .working, event: "PreToolUse")
     #expect(sm.currentDisplayState == .idle)
 }
 
 @MainActor
-@Test func userPromptSubmitClearsStoppedAt() {
+@Test func userPromptSubmitClearsStoppedAt() async {
     let sm = StateManager()
     sm.handleEvent(sessionId: "a", state: .idle, event: "Stop")
     // Expire oneshot
-    sm.oneshotTimer?.fire()
-    RunLoop.main.run(until: Date())
+    await fireOneshot(sm, expecting: .idle)
     sm.handleEvent(sessionId: "a", state: .thinking, event: "UserPromptSubmit")
     #expect(sm.currentDisplayState == .thinking)
     // Now working should be accepted
@@ -197,11 +207,10 @@ import Testing
 }
 
 @MainActor
-@Test func thinkingNotBlockedByStopDebounce() {
+@Test func thinkingNotBlockedByStopDebounce() async {
     let sm = StateManager()
     sm.handleEvent(sessionId: "a", state: .idle, event: "Stop")
-    sm.oneshotTimer?.fire()
-    RunLoop.main.run(until: Date())
+    await fireOneshot(sm, expecting: .idle)
     // thinking is NOT blocked (only working/juggling are)
     sm.handleEvent(sessionId: "a", state: .thinking, event: "UserPromptSubmit")
     #expect(sm.currentDisplayState == .thinking)
@@ -281,6 +290,7 @@ import Testing
     #expect(meta?.contextCurrentUsage == 42500)
     #expect(meta?.modelName == "claude-opus-4-6")
     #expect(meta?.sessionName == "my-session")
+    #expect(meta?.contextBand == .normal)
 }
 
 @MainActor
@@ -304,6 +314,56 @@ import Testing
     #expect(sm.sessions["a"]?.meta.modelName == "claude-opus-4-6")
     #expect(sm.sessions["a"]?.meta.sessionName == "session-1")
     #expect(sm.sessions["a"]?.meta.contextUsedPct == 60)
+    #expect(sm.sessions["a"]?.meta.contextBand == .cautious)
+}
+
+@MainActor
+@Test func updateContextEmitsThresholdNotifications() {
+    let sm = StateManager()
+    sm.handleEvent(sessionId: "a", state: .idle, event: "SessionStart")
+    var messages: [String] = []
+    sm.onSessionNotification = { _, msg in messages.append(msg) }
+
+    sm.updateContext(sessionId: "a", usedPct: 60, currentUsage: 600,
+                     modelName: "", sessionName: "")
+    sm.updateContext(sessionId: "a", usedPct: 75, currentUsage: 750,
+                     modelName: "", sessionName: "")
+    sm.updateContext(sessionId: "a", usedPct: 85, currentUsage: 850,
+                     modelName: "", sessionName: "")
+    sm.updateContext(sessionId: "a", usedPct: 95, currentUsage: 950,
+                     modelName: "", sessionName: "")
+
+    #expect(messages.count == 4)
+    #expect(messages[0] == "context 到 60% 了，开始谨慎")
+    #expect(messages[1] == "context 已经偏高，compact soon")
+    #expect(messages[2] == "这个 session 接近窗口极限，建议 compact soon，并准备收尾当前子任务")
+    #expect(messages[3] == "你已经连续 4 次处在高 context 区间，建议尽快结束当前子任务并开新 session")
+}
+
+@MainActor
+@Test func updateContextTracksHighContextStrikes() {
+    let sm = StateManager()
+    sm.handleEvent(sessionId: "a", state: .idle, event: "SessionStart")
+    var messages: [String] = []
+    sm.onSessionNotification = { _, msg in messages.append(msg) }
+
+    sm.updateContext(sessionId: "a", usedPct: 85, currentUsage: 850,
+                     modelName: "", sessionName: "")
+    sm.updateContext(sessionId: "a", usedPct: 50, currentUsage: 500,
+                     modelName: "", sessionName: "")
+    sm.updateContext(sessionId: "a", usedPct: 85, currentUsage: 850,
+                     modelName: "", sessionName: "")
+    sm.updateContext(sessionId: "a", usedPct: 50, currentUsage: 500,
+                     modelName: "", sessionName: "")
+    sm.updateContext(sessionId: "a", usedPct: 85, currentUsage: 850,
+                     modelName: "", sessionName: "")
+    sm.updateContext(sessionId: "a", usedPct: 50, currentUsage: 500,
+                     modelName: "", sessionName: "")
+    sm.updateContext(sessionId: "a", usedPct: 85, currentUsage: 850,
+                     modelName: "", sessionName: "")
+
+    #expect(sm.sessions["a"]?.meta.highContextStrikeCount == 4)
+    #expect(messages.last == "你已经连续 4 次处在高 context 区间，建议 compact 或尽快收尾当前子任务")
 }
 
 // MARK: - Active States Persist (no stale decay)
@@ -340,22 +400,20 @@ import Testing
 // MARK: - Inactivity
 
 @MainActor
-@Test func inactivitySleep() {
+@Test func inactivitySleep() async {
     let sm = StateManager()
     sm.handleEvent(sessionId: "a", state: .idle, event: "Stop")
-    sm.oneshotTimer?.fire()
-    RunLoop.main.run(until: Date())
+    await fireOneshot(sm, expecting: .idle)
     sm.backdateLastEvent(seconds: 61)
     sm.checkInactivity()
     #expect(sm.currentDisplayState == .sleeping)
 }
 
 @MainActor
-@Test func noInactivityWithin60s() {
+@Test func noInactivityWithin60s() async {
     let sm = StateManager()
     sm.handleEvent(sessionId: "a", state: .idle, event: "SessionStart")
     sm.oneshotTimer?.fire()
-    RunLoop.main.run(until: Date())
     sm.backdateLastEvent(seconds: 59)
     sm.checkInactivity()
     #expect(sm.currentDisplayState == .idle)  // not sleeping
@@ -530,12 +588,11 @@ import Testing
 }
 
 @MainActor
-@Test func rapidStopDoesNotCrash() {
+@Test func rapidStopDoesNotCrash() async {
     let sm = StateManager()
     sm.handleEvent(sessionId: "a", state: .idle, event: "Stop")
     sm.handleEvent(sessionId: "a", state: .idle, event: "Stop")
-    sm.oneshotTimer?.fire()
-    RunLoop.main.run(until: Date())
+    await fireOneshot(sm, expecting: .idle)
     #expect(sm.currentDisplayState == .idle)
 }
 

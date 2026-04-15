@@ -17,8 +17,6 @@ public final class NotificationBubble: NSObject {
     ) {
         dismiss()
 
-        guard let button = button, let buttonWindow = button.window else { return }
-
         let vm = BubbleViewModel()
         let bubbleView = GlassBubbleView(title: title, message: message, viewModel: vm)
         let hostingView = NSHostingView(rootView: bubbleView)
@@ -28,14 +26,26 @@ public final class NotificationBubble: NSObject {
         let contentH = max(hostingView.fittingSize.height, 40)
         let h = contentH + 20
 
-        let buttonRect = button.convert(button.bounds, to: nil)
-        let screenRect = buttonWindow.convertToScreen(buttonRect)
-        let windowRect = NSRect(
-            x: screenRect.midX - w / 2,
-            y: screenRect.minY - contentH - 30,
-            width: w,
-            height: h
-        )
+        let windowRect: NSRect
+        if let button, let buttonWindow = button.window {
+            let buttonRect = button.convert(button.bounds, to: nil)
+            let screenRect = buttonWindow.convertToScreen(buttonRect)
+            windowRect = NSRect(
+                x: screenRect.midX - w / 2,
+                y: screenRect.minY - contentH - 30,
+                width: w,
+                height: h
+            )
+        } else if let screenFrame = NSScreen.main?.visibleFrame {
+            windowRect = NSRect(
+                x: screenFrame.maxX - w - 24,
+                y: screenFrame.maxY - h - 24,
+                width: w,
+                height: h
+            )
+        } else {
+            return
+        }
 
         let panel = NSPanel(
             contentRect: windowRect,
