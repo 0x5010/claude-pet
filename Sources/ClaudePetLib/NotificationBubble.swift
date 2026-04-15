@@ -13,7 +13,7 @@ public final class NotificationBubble: NSObject {
         title: String = "Claude Code",
         message: String,
         relativeTo button: NSStatusBarButton?,
-        duration: TimeInterval = 4.0
+        duration: TimeInterval = 7.0
     ) {
         dismiss()
 
@@ -22,9 +22,9 @@ public final class NotificationBubble: NSObject {
         let hostingView = NSHostingView(rootView: bubbleView)
         hostingView.setFrameSize(hostingView.fittingSize)
 
-        let w = max(hostingView.fittingSize.width, 200)
-        let contentH = max(hostingView.fittingSize.height, 40)
-        let h = contentH + 20
+        let w = min(max(hostingView.fittingSize.width, 240), 380)
+        let contentH = min(max(hostingView.fittingSize.height, 40), 200)
+        let h = min(contentH + 20, 220)
 
         let windowRect: NSRect
         if let button, let buttonWindow = button.window {
@@ -122,17 +122,17 @@ private struct GlassBubbleFallback: View {
                 Text(title)
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(.primary)
-                    .lineLimit(1)
+                    .lineLimit(2)
             }
 
             Text(message)
                 .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(.primary)
-                .lineLimit(3)
+                .lineLimit(6)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
-        .frame(minWidth: 200, maxWidth: 300)
+        .frame(minWidth: 240, maxWidth: 380, maxHeight: 220)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
         .opacity(viewModel.isVisible ? 1 : 0)
         .offset(y: viewModel.isVisible ? 0 : -14)
