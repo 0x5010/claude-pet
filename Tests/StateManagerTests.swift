@@ -334,10 +334,10 @@ private func fireOneshot(_ sm: StateManager, expecting expectedState: PetState) 
                      modelName: "", sessionName: "")
 
     #expect(messages.count == 4)
-    #expect(messages[0] == "context 到 60% 了，开始谨慎")
-    #expect(messages[1] == "context 已经偏高，compact soon")
-    #expect(messages[2] == "这个 session 接近窗口极限，建议 compact soon，并准备收尾当前子任务")
-    #expect(messages[3] == "你已经连续 4 次处在高 context 区间，建议尽快结束当前子任务并开新 session")
+    #expect(messages[0] == "Context 60%：控制输入长度，先别展开新话题。")
+    #expect(messages[1] == "Context 75%：现在就 compact，别继续堆上下文。")
+    #expect(messages[2] == "Context 85%：立即 compact，并开始收尾当前子任务。")
+    #expect(messages[3] == "Context 95%：别继续当前 session，马上开新 session。")
 }
 
 @MainActor
@@ -363,7 +363,54 @@ private func fireOneshot(_ sm: StateManager, expecting expectedState: PetState) 
                      modelName: "", sessionName: "")
 
     #expect(sm.sessions["a"]?.meta.highContextStrikeCount == 4)
-    #expect(messages.last == "你已经连续 4 次处在高 context 区间，建议 compact 或尽快收尾当前子任务")
+    #expect(messages.last == "Context 85%：立即 compact；再升高就直接开新 session。")
+}
+
+@MainActor
+@Test func updateContextRefreshesAppearanceForIdleSessionWhenBandChanges() {
+    let sm = StateManager()
+    sm.handleEvent(sessionId: "a", state: .idle, event: "SessionStart")
+    var refreshed: [String] = []
+    sm.onSessionAppearanceChange = { refreshed.append($0) }
+
+    sm.updateContext(sessionId: "a", usedPct: 60, currentUsage: 600,
+                     modelName: "", sessionName: "")
+    sm.updateContext(sessionId: "a", usedPct: 62, currentUsage: 620,
+                     modelName: "", sessionName: "")
+    sm.updateContext(sessionId: "a", usedPct: 78, currentUsage: 780,
+                     modelName: "", sessionName: "")
+    sm.updateContext(sessionId: "a", usedPct: 20, currentUsage: 200,
+                     modelName: "", sessionName: "")
+
+    #expect(refreshed == ["a", "a", "a"])
+}
+
+@MainActor
+@Test func updateContextRefreshesAppearanceForSleepingSessionWhenBandChanges() {
+    let sm = StateManager()
+    sm.handleEvent(sessionId: "a", state: .sleeping, event: "SessionStart")
+    var refreshed: [String] = []
+    sm.onSessionAppearanceChange = { refreshed.append($0) }
+
+    sm.updateContext(sessionId: "a", usedPct: 85, currentUsage: 850,
+                     modelName: "", sessionName: "")
+    sm.updateContext(sessionId: "a", usedPct: 95, currentUsage: 950,
+                     modelName: "", sessionName: "")
+
+    #expect(refreshed == ["a", "a"])
+}
+
+@MainActor
+@Test func updateContextDoesNotRefreshAppearanceForWorkingSession() {
+    let sm = StateManager()
+    sm.handleEvent(sessionId: "a", state: .working, event: "PreToolUse")
+    var refreshed = false
+    sm.onSessionAppearanceChange = { _ in refreshed = true }
+
+    sm.updateContext(sessionId: "a", usedPct: 85, currentUsage: 850,
+                     modelName: "", sessionName: "")
+
+    #expect(!refreshed)
 }
 
 // MARK: - Active States Persist (no stale decay)

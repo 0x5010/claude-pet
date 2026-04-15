@@ -126,13 +126,13 @@ private struct GlassBubbleFallback: View {
             }
 
             Text(message)
-                .font(.system(size: 12))
-                .foregroundStyle(.secondary)
-                .lineLimit(2)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(.primary)
+                .lineLimit(3)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
-        .frame(minWidth: 180, maxWidth: 260)
+        .frame(minWidth: 200, maxWidth: 300)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
         .opacity(viewModel.isVisible ? 1 : 0)
         .offset(y: viewModel.isVisible ? 0 : -14)

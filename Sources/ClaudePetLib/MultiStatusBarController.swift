@@ -12,6 +12,8 @@ private final class StatusBarInstance {
     private(set) var currentState: PetState = .idle
     private let frameCache: [PetState: [NSImage]]
     private let cgFrameCache: [PetState: [CGImage]]
+    private let contextFrameCache: [PetState: [ContextBand: [NSImage]]]
+    private let contextCGFrameCache: [PetState: [ContextBand: [CGImage]]]
     weak var stateManager: StateManager?
     var lastEventAt: Date = Date()
     let createdAt: Date = Date()
@@ -33,11 +35,14 @@ private final class StatusBarInstance {
         (.sleeping, "Sleeping - 休眠中"),
     ]
 
-    init(sessionId: String, cwd: String, frameCache: [PetState: [NSImage]], cgFrameCache: [PetState: [CGImage]]) {
+    init(sessionId: String, cwd: String, frameCache: [PetState: [NSImage]], cgFrameCache: [PetState: [CGImage]],
+         contextFrameCache: [PetState: [ContextBand: [NSImage]]], contextCGFrameCache: [PetState: [ContextBand: [CGImage]]]) {
         self.sessionId = sessionId
         self.cwd = cwd
         self.frameCache = frameCache
         self.cgFrameCache = cgFrameCache
+        self.contextFrameCache = contextFrameCache
+        self.contextCGFrameCache = contextCGFrameCache
         self.statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         setupButton()
         transitionTo(.idle)
@@ -121,21 +126,22 @@ private final class StatusBarInstance {
     }
 
     private func contextHintText(meta: SessionMeta) -> String {
+        let percent = Int(meta.contextUsedPct.rounded())
         switch meta.contextBand {
         case .normal:
-            return "Healthy context window"
+            return "Context \(percent)% — safe"
         case .cautious:
-            return "开始谨慎，先控制上下文膨胀"
+            return "Context \(percent)% — keep prompts short"
         case .compactSoon:
-            return "compact soon，避免继续堆上下文"
+            return "Context \(percent)% — compact now"
         case .urgent:
             return meta.highContextStrikeCount >= 4
-                ? "你已经连续多次处在高 context 区间"
-                : "这个 session 接近窗口极限"
+                ? "Context \(percent)% — compact now, be ready to restart"
+                : "Context \(percent)% — compact now and wrap up"
         case .critical:
             return meta.highContextStrikeCount >= 4
-                ? "建议尽快结束当前子任务并开新 session"
-                : "Critical — wrap up and restart"
+                ? "Context \(percent)% — stop here and open a new session"
+                : "Context \(percent)% — finish now, then restart"
         }
     }
 
@@ -338,17 +344,31 @@ private final class StatusBarInstance {
         return img
     }()
 
-    func transitionTo(_ state: PetState) {
-        guard state != currentState else { return }
+    func transitionTo(_ state: PetState, forceRefresh: Bool = false) {
+        guard forceRefresh || state != currentState else { return }
         currentState = state
         applyAnimation(for: state)
     }
 
-    private func applyAnimation(for state: PetState) {
-        guard let button = statusItem.button else { return }
+    private func frameSet(for state: PetState) -> (nsFrames: [NSImage], cgFrames: [CGImage])? {
+        if state.supportsContextAppearance,
+           let band = stateManager?.sessions[sessionId]?.meta.contextBand,
+           let nsFrames = contextFrameCache[state]?[band], !nsFrames.isEmpty,
+           let cgFrames = contextCGFrameCache[state]?[band], !cgFrames.isEmpty {
+            return (nsFrames, cgFrames)
+        }
 
-        guard let cgFrames = cgFrameCache[state], !cgFrames.isEmpty,
-              let nsFrames = frameCache[state], !nsFrames.isEmpty else { return }
+        guard let nsFrames = frameCache[state], !nsFrames.isEmpty,
+              let cgFrames = cgFrameCache[state], !cgFrames.isEmpty else { return nil }
+        return (nsFrames, cgFrames)
+    }
+
+    private func applyAnimation(for state: PetState) {
+        guard let button = statusItem.button,
+              let frames = frameSet(for: state) else { return }
+
+        let nsFrames = frames.nsFrames
+        let cgFrames = frames.cgFrames
 
         // Remove existing animation sublayer
         button.layer?.sublayers?.first(where: { $0.name == "claude-pet-icon" })?.removeFromSuperlayer()
@@ -428,6 +448,8 @@ public final class MultiStatusBarController {
     // No default instance — only real sessions get status bar icons
     private let frameCache: [PetState: [NSImage]]
     private let cgFrameCache: [PetState: [CGImage]]
+    private let contextFrameCache: [PetState: [ContextBand: [NSImage]]]
+    private let contextCGFrameCache: [PetState: [ContextBand: [CGImage]]]
     private let maxInstances = 5
 
     private var cleanupTimer: Timer?
@@ -437,9 +459,11 @@ public final class MultiStatusBarController {
 
     public init(stateManager: StateManager) {
         self.stateManager = stateManager
-        let (nsCache, cgCache) = Self.preRenderFrames()
+        let (nsCache, cgCache, contextNSCache, contextCGCache) = Self.preRenderFrames()
         self.frameCache = nsCache
         self.cgFrameCache = cgCache
+        self.contextFrameCache = contextNSCache
+        self.contextCGFrameCache = contextCGCache
 
         wireCallbacks()
         setupTimers()
@@ -447,21 +471,41 @@ public final class MultiStatusBarController {
 
     // MARK: - Pre-render
 
-    private static func preRenderFrames() -> ([PetState: [NSImage]], [PetState: [CGImage]]) {
+    private static func preRenderFrames() -> (
+        [PetState: [NSImage]],
+        [PetState: [CGImage]],
+        [PetState: [ContextBand: [NSImage]]],
+        [PetState: [ContextBand: [CGImage]]]
+    ) {
         let frameCounts: [PetState: Int] = [
             .idle: 8, .thinking: 8, .working: 6, .juggling: 8, .error: 8,
             .notification: 4, .happy: 6, .sleeping: 6,
         ]
         var nsCache: [PetState: [NSImage]] = [:]
         var cgCache: [PetState: [CGImage]] = [:]
+        var contextNSCache: [PetState: [ContextBand: [NSImage]]] = [:]
+        var contextCGCache: [PetState: [ContextBand: [CGImage]]] = [:]
         for (state, count) in frameCounts {
             let nsImages = (0..<count).map { frame in
                 PixelRenderer.render(state: state, frame: frame, totalFrames: count)
             }
             nsCache[state] = nsImages
             cgCache[state] = nsImages.compactMap { $0.cgImage(forProposedRect: nil, context: nil, hints: nil) }
+
+            guard state.supportsContextAppearance else { continue }
+            var stateContextImages: [ContextBand: [NSImage]] = [:]
+            var stateContextCGImages: [ContextBand: [CGImage]] = [:]
+            for band in [ContextBand.normal, .cautious, .compactSoon, .urgent, .critical] {
+                let bandImages = (0..<count).map { frame in
+                    PixelRenderer.render(state: state, frame: frame, totalFrames: count, contextBand: band)
+                }
+                stateContextImages[band] = bandImages
+                stateContextCGImages[band] = bandImages.compactMap { $0.cgImage(forProposedRect: nil, context: nil, hints: nil) }
+            }
+            contextNSCache[state] = stateContextImages
+            contextCGCache[state] = stateContextCGImages
         }
-        return (nsCache, cgCache)
+        return (nsCache, cgCache, contextNSCache, contextCGCache)
     }
 
     // MARK: - Instance management
@@ -478,7 +522,9 @@ public final class MultiStatusBarController {
             sessionId: sessionId,
             cwd: cwd,
             frameCache: frameCache,
-            cgFrameCache: cgFrameCache
+            cgFrameCache: cgFrameCache,
+            contextFrameCache: contextFrameCache,
+            contextCGFrameCache: contextCGFrameCache
         )
         instance.stateManager = stateManager
         instances[sessionId] = instance
@@ -524,6 +570,13 @@ public final class MultiStatusBarController {
         stateManager.onSessionNotification = { [weak self] sessionId, message in
             DispatchQueue.main.async {
                 self?.instances[sessionId]?.showBubble(message: message)
+            }
+        }
+
+        stateManager.onSessionAppearanceChange = { [weak self] sessionId in
+            DispatchQueue.main.async {
+                guard let instance = self?.instances[sessionId] else { return }
+                instance.transitionTo(instance.currentState, forceRefresh: true)
             }
         }
     }

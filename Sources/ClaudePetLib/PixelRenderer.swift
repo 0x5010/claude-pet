@@ -22,7 +22,22 @@ public struct PixelRenderer {
     //   Eyes:   y:12-18
     //   Shadow: y:33
 
-    public static func render(state: PetState, frame: Int, totalFrames: Int) -> NSImage {
+    static func contextBodyColor(for band: ContextBand) -> NSColor {
+        switch band {
+        case .normal:
+            return bodyColor
+        case .cautious:
+            return NSColor(red: 0xE7/255.0, green: 0xB6/255.0, blue: 0x5C/255.0, alpha: 1)
+        case .compactSoon:
+            return NSColor(red: 0xF4/255.0, green: 0x9A/255.0, blue: 0x48/255.0, alpha: 1)
+        case .urgent:
+            return NSColor(red: 0xEB/255.0, green: 0x73/255.0, blue: 0x58/255.0, alpha: 1)
+        case .critical:
+            return errorColor
+        }
+    }
+
+    public static func render(state: PetState, frame: Int, totalFrames: Int, contextBand: ContextBand = .normal) -> NSImage {
         let size = NSSize(width: imageSize, height: imageSize)
         let image = NSImage(size: size)
         image.lockFocusFlipped(true)
@@ -44,7 +59,7 @@ public struct PixelRenderer {
 
         switch state {
         case .idle:
-            drawIdle(px: px, frame: frame)
+            drawIdle(px: px, frame: frame, bodyFill: contextBodyColor(for: contextBand))
         case .thinking:
             drawThinking(px: px, frame: frame)
         case .working:
@@ -58,7 +73,7 @@ public struct PixelRenderer {
         case .happy:
             drawHappy(px: px, frame: frame)
         case .sleeping:
-            drawSleeping(px: px, frame: frame)
+            drawSleeping(px: px, frame: frame, bodyFill: contextBodyColor(for: contextBand))
         }
 
         image.unlockFocus()
@@ -90,8 +105,9 @@ public struct PixelRenderer {
 
     // MARK: - Idle: breathe + blink
 
-    static func drawIdle(px: @escaping (_ x: Int, _ y: Int, _ w: Int, _ h: Int) -> Void, frame: Int) {
-        drawBody(px: px)
+    static func drawIdle(px: @escaping (_ x: Int, _ y: Int, _ w: Int, _ h: Int) -> Void, frame: Int,
+                         bodyFill: NSColor = bodyColor) {
+        drawBody(px: px, bodyFill: bodyFill)
         // Blink on frame 3 and 4
         if frame == 3 || frame == 4 {
             eyeColor.setFill()
@@ -189,13 +205,14 @@ public struct PixelRenderer {
 
     // MARK: - Sleeping: standing body without legs + closed eyes + Z
 
-    static func drawSleeping(px: @escaping (_ x: Int, _ y: Int, _ w: Int, _ h: Int) -> Void, frame: Int) {
+    static func drawSleeping(px: @escaping (_ x: Int, _ y: Int, _ w: Int, _ h: Int) -> Void, frame: Int,
+                             bodyFill: NSColor = bodyColor) {
         // Shadow
         shadowColor.setFill()
         px(6, 33, 33, 3)
 
         // Body on ground (no legs)
-        bodyColor.setFill()
+        bodyFill.setFill()
         px(6, 12, 33, 21)      // torso (shifted down)
         px(0, 21, 6, 6)        // left arm
         px(39, 21, 6, 6)       // right arm

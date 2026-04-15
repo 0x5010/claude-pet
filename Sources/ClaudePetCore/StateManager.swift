@@ -27,6 +27,10 @@ public enum PetState: String, Equatable, Sendable {
         case .error, .notification, .happy: return 99  // oneshots
         }
     }
+
+    public var supportsContextAppearance: Bool {
+        self == .idle || self == .sleeping
+    }
 }
 
 public enum ContextBand: String, Equatable, Sendable {
@@ -81,6 +85,7 @@ public final class StateManager {
     public var onSessionStateChange: ((String, PetState) -> Void)?
     public var onSessionRemoved: ((String) -> Void)?
     public var onSessionNotification: ((String, String) -> Void)?  // (sessionId, message)
+    public var onSessionAppearanceChange: ((String) -> Void)?
 
     public var sessionCount: Int { sessions.count }
 
@@ -271,7 +276,12 @@ public final class StateManager {
             onSessionNotification?(sessionId, alert.message)
         }
 
+        let shouldRefreshAppearance = session.state.supportsContextAppearance && previousMeta.contextBand != newBand
         sessions[sessionId] = session
+
+        if shouldRefreshAppearance {
+            onSessionAppearanceChange?(sessionId)
+        }
     }
 
     public func checkInactivity() {
@@ -327,25 +337,26 @@ public final class StateManager {
     }
 
     private func contextSuggestion(for meta: SessionMeta) -> (key: String, message: String) {
+        let percent = Int(meta.contextUsedPct.rounded())
         switch meta.contextBand {
         case .critical:
             return (
                 key: meta.highContextStrikeCount >= 4 ? "critical-strikes" : "critical",
                 message: meta.highContextStrikeCount >= 4
-                    ? "你已经连续 4 次处在高 context 区间，建议尽快结束当前子任务并开新 session"
-                    : "这个 session 接近窗口极限，建议尽快结束当前子任务并开新 session"
+                    ? "Context \(percent)%：别继续当前 session，马上开新 session。"
+                    : "Context \(percent)%：马上收尾当前子任务，然后开新 session。"
             )
         case .urgent:
             return (
                 key: meta.highContextStrikeCount >= 4 ? "urgent-strikes" : "urgent",
                 message: meta.highContextStrikeCount >= 4
-                    ? "你已经连续 4 次处在高 context 区间，建议 compact 或尽快收尾当前子任务"
-                    : "这个 session 接近窗口极限，建议 compact soon，并准备收尾当前子任务"
+                    ? "Context \(percent)%：立即 compact；再升高就直接开新 session。"
+                    : "Context \(percent)%：立即 compact，并开始收尾当前子任务。"
             )
         case .compactSoon:
-            return (key: "compactSoon", message: "context 已经偏高，compact soon")
+            return (key: "compactSoon", message: "Context \(percent)%：现在就 compact，别继续堆上下文。")
         case .cautious:
-            return (key: "cautious", message: "context 到 60% 了，开始谨慎")
+            return (key: "cautious", message: "Context \(percent)%：控制输入长度，先别展开新话题。")
         case .normal:
             return (key: "", message: "")
         }
