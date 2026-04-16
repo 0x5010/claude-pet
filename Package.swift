@@ -27,7 +27,7 @@ let package = Package(
         ),
         .testTarget(
             name: "ClaudePetTests",
-            dependencies: ["ClaudePetCore"],
+            dependencies: ["ClaudePetCore", "ClaudePetLib"],
             path: "Tests",
             swiftSettings: [
                 .unsafeFlags([

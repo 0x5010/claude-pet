@@ -20,10 +20,34 @@ public struct HookEvent {
     public let message: String
 }
 
+public struct PendingPermissionRequest {
+    public let requestId: String
+    public let sessionId: String
+    public let toolName: String
+    public let toolInput: String
+}
+
+public enum PermissionBehavior: String {
+    case allow
+    case deny
+}
+
+public struct PermissionDecision {
+    public let behavior: PermissionBehavior
+    public let message: String?
+
+    public init(behavior: PermissionBehavior, message: String? = nil) {
+        self.behavior = behavior
+        self.message = message
+    }
+}
+
 public final class HttpServer: @unchecked Sendable {
     private var listener: NWListener?
+    private var pendingPermissionConnections: [String: NWConnection] = [:]
     public var onStateEvent: ((HookEvent) -> Void)?
     public var onContextUpdate: ((String, ContextInfo) -> Void)?  // (sessionId, info)
+    public var onPermissionRequest: ((PendingPermissionRequest) -> Void)?
 
     public init() {}
 
@@ -134,9 +158,63 @@ public final class HttpServer: @unchecked Sendable {
             )
             onContextUpdate?(sessionId, info)
             sendResponse(connection: connection, status: 200, body: "ok")
+        } else if firstLine.hasPrefix("POST /permission") {
+            guard let sessionId = json["session_id"] as? String, !sessionId.isEmpty else {
+                sendResponse(connection: connection, status: 400, body: "missing session_id")
+                return
+            }
+            let requestId = UUID().uuidString
+            let pending = PendingPermissionRequest(
+                requestId: requestId,
+                sessionId: sessionId,
+                toolName: json["tool_name"] as? String ?? "",
+                toolInput: Self.stringifyJSON(json["tool_input"])
+            )
+            pendingPermissionConnections[requestId] = connection
+            if let onPermissionRequest {
+                onPermissionRequest(pending)
+            } else {
+                resolvePermission(requestId: requestId, decision: PermissionDecision(behavior: .deny, message: "permission handler unavailable"))
+            }
         } else {
             sendResponse(connection: connection, status: 404, body: "not found")
         }
+    }
+
+    public func resolvePermission(requestId: String, decision: PermissionDecision) {
+        guard let connection = pendingPermissionConnections.removeValue(forKey: requestId) else { return }
+
+        var payload: [String: Any] = [
+            "behavior": decision.behavior.rawValue
+        ]
+        if let message = decision.message, !message.isEmpty {
+            payload["message"] = message
+        }
+
+        let responseObj: [String: Any] = [
+            "hookSpecificOutput": [
+                "hookEventName": "PermissionRequest",
+                "decision": payload
+            ]
+        ]
+        let data = (try? JSONSerialization.data(withJSONObject: responseObj, options: [])) ?? Data("{}".utf8)
+        let body = String(data: data, encoding: .utf8) ?? "{}"
+        sendResponse(connection: connection, status: 200, body: body)
+    }
+
+    public func pendingPermissionCount() -> Int {
+        pendingPermissionConnections.count
+    }
+
+    private static func stringifyJSON(_ value: Any?) -> String {
+        guard let value else { return "" }
+        if let text = value as? String { return text }
+        if JSONSerialization.isValidJSONObject(value),
+           let data = try? JSONSerialization.data(withJSONObject: value, options: []),
+           let text = String(data: data, encoding: .utf8) {
+            return text
+        }
+        return ""
     }
 
     private func sendResponse(connection: NWConnection, status: Int, body: String) {
