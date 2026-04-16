@@ -234,12 +234,21 @@ private struct GlassPermissionView: View {
                     .foregroundStyle(.primary)
                     .lineLimit(6)
 
-                HStack(spacing: 10) {
+                HStack(spacing: 8) {
                     Button("Deny") { onDeny() }
                         .buttonStyle(.bordered)
+                        .tint(.red)
+                        .controlSize(.large)
+                        .frame(minWidth: 84, minHeight: 34)
+
                     Button("Allow") { onAllow() }
                         .buttonStyle(.borderedProminent)
+                        .tint(.green)
+                        .controlSize(.large)
+                        .font(.system(size: 13, weight: .semibold))
+                        .frame(maxWidth: .infinity, minHeight: 34)
                 }
+                .frame(maxWidth: .infinity)
             }
             .frame(minWidth: 260, maxWidth: 420, maxHeight: 260, alignment: .leading)
         }

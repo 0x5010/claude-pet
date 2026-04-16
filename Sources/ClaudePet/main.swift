@@ -14,7 +14,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         httpServer.onStateEvent = { [weak self] e in
             guard let self, let petState = PetState(rawValue: e.state) else { return }
-            if self.pendingPermissionSessions.contains(e.sessionId), petState != .notification {
+            if self.pendingPermissionSessions.contains(e.sessionId), e.event == "PreToolUse" {
                 self.multiStatusBarController?.dismissBubble(sessionId: e.sessionId)
                 self.pendingPermissionSessions.remove(e.sessionId)
             }
