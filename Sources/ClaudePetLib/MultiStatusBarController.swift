@@ -305,6 +305,21 @@ private final class StatusBarInstance {
         bubble.show(title: title, message: message, relativeTo: statusItem.button)
     }
 
+    func showPermissionBubble(toolName: String, onDecision: @escaping (PermissionDecision) -> Void) {
+        let dir = (cwd as NSString).lastPathComponent
+        let title = dir.isEmpty ? "" : dir
+        let trimmedTool = toolName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let toolText = trimmedTool.isEmpty ? "tool" : trimmedTool
+        bubble.showPermission(
+            title: title,
+            message: "Allow \(toolText) to run?",
+            relativeTo: statusItem.button,
+            duration: 20.0,
+            onAllow: { onDecision(PermissionDecision(behavior: .allow)) },
+            onDeny: { onDecision(PermissionDecision(behavior: .deny)) }
+        )
+    }
+
     // MARK: - State & animation (Core Animation driven)
 
     private static let animationKey = "claude-pet-frame-animation"
@@ -513,6 +528,18 @@ public final class MultiStatusBarController {
         guard let instance = instances[sessionId] else { return }
         instance.lastEventAt = Date()
         instance.transitionTo(state)
+    }
+
+    public func showPermissionBubble(sessionId: String, toolName: String, onDecision: @escaping (PermissionDecision) -> Void) {
+        if instances[sessionId] == nil {
+            let cwd = stateManager.sessions[sessionId]?.cwd ?? ""
+            addInstance(sessionId: sessionId, cwd: cwd)
+        }
+        guard let instance = instances[sessionId] else {
+            onDecision(PermissionDecision(behavior: .deny, message: "session unavailable"))
+            return
+        }
+        instance.showPermissionBubble(toolName: toolName, onDecision: onDecision)
     }
 
     // MARK: - StateManager callbacks
