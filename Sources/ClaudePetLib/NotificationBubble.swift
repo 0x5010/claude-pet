@@ -6,7 +6,6 @@ public final class NotificationBubble: NSObject {
     private var panel: NSPanel?
     private var dismissTimer: Timer?
     private var viewModel: BubbleViewModel?
-    private var permissionTimeoutAction: (() -> Void)?
 
     public override init() { super.init() }
 
@@ -17,7 +16,6 @@ public final class NotificationBubble: NSObject {
         duration: TimeInterval = 7.0
     ) {
         dismiss()
-        permissionTimeoutAction = nil
 
         let vm = BubbleViewModel()
         let bubbleView = GlassNotificationView(title: title, message: message, viewModel: vm)
@@ -73,7 +71,6 @@ public final class NotificationBubble: NSObject {
                 self?.dismiss()
             }
         )
-        permissionTimeoutAction = onDeny
         let hostingView = NSHostingView(rootView: bubbleView)
         hostingView.setFrameSize(hostingView.fittingSize)
 
@@ -97,9 +94,7 @@ public final class NotificationBubble: NSObject {
 
         dismissTimer = Timer.scheduledTimer(withTimeInterval: duration, repeats: false) { [weak self] _ in
             Task { @MainActor in
-                guard let self else { return }
-                self.permissionTimeoutAction?()
-                self.animateOut()
+                self?.animateOut()
             }
         }
     }
@@ -148,7 +143,6 @@ public final class NotificationBubble: NSObject {
     private func animateOut() {
         dismissTimer?.invalidate()
         dismissTimer = nil
-        permissionTimeoutAction = nil
         guard let vm = viewModel, let panel = panel else { return }
         withAnimation(.easeIn(duration: 0.25)) {
             vm.isVisible = false
@@ -164,7 +158,6 @@ public final class NotificationBubble: NSObject {
     public func dismiss() {
         dismissTimer?.invalidate()
         dismissTimer = nil
-        permissionTimeoutAction = nil
         panel?.orderOut(nil)
         panel = nil
         viewModel = nil
