@@ -320,10 +320,6 @@ private final class StatusBarInstance {
         )
     }
 
-    func dismissBubble() {
-        bubble.dismiss()
-    }
-
     // MARK: - State & animation (Core Animation driven)
 
     private static let animationKey = "claude-pet-frame-animation"
@@ -544,10 +540,6 @@ public final class MultiStatusBarController {
             return
         }
         instance.showPermissionBubble(toolName: toolName, onDecision: onDecision)
-    }
-
-    public func dismissBubble(sessionId: String) {
-        instances[sessionId]?.dismissBubble()
     }
 
     // MARK: - StateManager callbacks

@@ -45,7 +45,7 @@ hook_marker = "claude-pet-hook.sh"
 statusline_marker = "claude-pet-statusline.sh"
 events = ["SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUseFailure",
           "SubagentStart", "SubagentStop", "Notification", "Elicitation",
-          "Stop", "SessionEnd"]
+          "PermissionRequest", "Stop", "SessionEnd"]
 
 with open(settings_path, "r") as f:
     settings = json.load(f)
@@ -60,8 +60,7 @@ for event in list(hooks.keys()):
     for entry in original:
         cmd = entry.get("command", "")
         nested = entry.get("hooks", [])
-        is_permission_http = any(h.get("type") == "http" and h.get("url") == "http://127.0.0.1:23333/permission" for h in nested)
-        is_claude_pet = hook_marker in cmd or any(hook_marker in h.get("command", "") for h in nested) or is_permission_http
+        is_claude_pet = hook_marker in cmd or any(hook_marker in h.get("command", "") for h in nested)
         if is_claude_pet:
             removed += 1
         else:
@@ -78,17 +77,6 @@ for event in events:
         "hooks": [{"type": "command", "command": command}]
     })
     added += 1
-
-permission_entries = hooks.setdefault("PermissionRequest", [])
-permission_entries.append({
-    "matcher": "",
-    "hooks": [{
-        "type": "http",
-        "url": "http://127.0.0.1:23333/permission",
-        "timeout": 600
-    }]
-})
-added += 1
 
 existing_statusline = settings.get("statusLine")
 replaced_statusline = 0
