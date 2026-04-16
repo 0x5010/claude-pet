@@ -73,9 +73,9 @@ private final class StatusBarInstance {
 
     // MARK: - Menu
 
-    private static let menuWidth: CGFloat = 260
-    private static let cardInset: CGFloat = 12
-    private static let cardPad: CGFloat = 10
+    private static let menuWidth: CGFloat = 244
+    private static let cardInset: CGFloat = 10
+    private static let cardPad: CGFloat = 8
 
     private func runGit(cwd: String, args: [String]) -> String {
         let process = Process()
@@ -126,81 +126,68 @@ private final class StatusBarInstance {
     }
 
     private func contextHintText(meta: SessionMeta) -> String {
-        let percent = Int(meta.contextUsedPct.rounded())
         switch meta.contextBand {
         case .normal:
-            return "Context \(percent)% — safe"
+            return "Safe"
         case .cautious:
-            return "Context \(percent)% — keep prompts short"
+            return "Keep prompts short"
         case .compactSoon:
-            return "Context \(percent)% — compact now"
+            return "Compact now"
         case .urgent:
             return meta.highContextStrikeCount >= 4
-                ? "Context \(percent)% — compact now, be ready to restart"
-                : "Context \(percent)% — compact now and wrap up"
+                ? "Compact now, prepare a new session"
+                : "Compact now and wrap up"
         case .critical:
             return meta.highContextStrikeCount >= 4
-                ? "Context \(percent)% — stop here and open a new session"
-                : "Context \(percent)% — finish now, then restart"
+                ? "Stop and open a new session"
+                : "Finish now, then restart"
         }
     }
 
-    /// Context usage companion card with progress bar + suggestion
+    /// Ultra-compact context card with one line + progress bar
     private func makeContextCard(meta: SessionMeta) -> NSView {
         let w = Self.menuWidth
         let percent = Int(meta.contextUsedPct)
-        let h: CGFloat = 76
-        let wrapper = NSView(frame: NSRect(x: 0, y: 0, width: w, height: h + 4))
+        let h: CGFloat = 40
+        let wrapper = NSView(frame: NSRect(x: 0, y: 0, width: w, height: h + 2))
 
-        let card = NSView(frame: NSRect(x: Self.cardInset, y: 2, width: w - Self.cardInset * 2, height: h))
+        let card = NSView(frame: NSRect(x: Self.cardInset, y: 1, width: w - Self.cardInset * 2, height: h))
         card.wantsLayer = true
         card.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.12).cgColor
-        card.layer?.cornerRadius = 8
+        card.layer?.cornerRadius = 7
         wrapper.addSubview(card)
 
         let cw = card.frame.width
         let p = Self.cardPad
         let barColor = contextBarColor(for: meta.contextBand, percent: percent)
 
-        let titleLabel = NSTextField(labelWithString: "Context Usage")
-        titleLabel.font = NSFont.systemFont(ofSize: 13, weight: .semibold)
-        titleLabel.textColor = .labelColor
-        titleLabel.frame = NSRect(x: p, y: h - 22, width: cw - p * 2 - 50, height: 18)
+        let titleLabel = NSTextField(labelWithString: "Context · \(contextBandLabel(meta.contextBand))")
+        titleLabel.font = NSFont.systemFont(ofSize: 10, weight: .medium)
+        titleLabel.textColor = .secondaryLabelColor
+        titleLabel.lineBreakMode = .byTruncatingTail
+        titleLabel.frame = NSRect(x: p, y: h - 17, width: cw - p * 2 - 42, height: 12)
         card.addSubview(titleLabel)
 
         let pctLabel = NSTextField(labelWithString: "\(percent)%")
-        pctLabel.font = NSFont.systemFont(ofSize: 13, weight: .semibold)
+        pctLabel.font = NSFont.systemFont(ofSize: 11, weight: .semibold)
         pctLabel.textColor = barColor
         pctLabel.alignment = .right
-        pctLabel.frame = NSRect(x: cw - p - 50, y: h - 22, width: 50, height: 18)
+        pctLabel.frame = NSRect(x: cw - p - 42, y: h - 18, width: 42, height: 14)
         card.addSubview(pctLabel)
-
-        let bandLabel = NSTextField(labelWithString: contextBandLabel(meta.contextBand))
-        bandLabel.font = NSFont.systemFont(ofSize: 10, weight: .medium)
-        bandLabel.textColor = barColor
-        bandLabel.frame = NSRect(x: p, y: h - 38, width: cw - p * 2, height: 12)
-        card.addSubview(bandLabel)
-
-        let hintLabel = NSTextField(wrappingLabelWithString: contextHintText(meta: meta))
-        hintLabel.font = NSFont.systemFont(ofSize: 10)
-        hintLabel.textColor = .tertiaryLabelColor
-        hintLabel.maximumNumberOfLines = 2
-        hintLabel.frame = NSRect(x: p, y: h - 58, width: cw - p * 2, height: 22)
-        card.addSubview(hintLabel)
 
         let barY: CGFloat = 8
         let barW = cw - p * 2
-        let barBg = NSView(frame: NSRect(x: p, y: barY, width: barW, height: 5))
+        let barBg = NSView(frame: NSRect(x: p, y: barY, width: barW, height: 4))
         barBg.wantsLayer = true
         barBg.layer?.backgroundColor = NSColor.systemGray.withAlphaComponent(0.25).cgColor
-        barBg.layer?.cornerRadius = 2.5
+        barBg.layer?.cornerRadius = 2
         card.addSubview(barBg)
 
         let fillW = max(0, barW * CGFloat(percent) / 100.0)
-        let barFill = NSView(frame: NSRect(x: p, y: barY, width: fillW, height: 5))
+        let barFill = NSView(frame: NSRect(x: p, y: barY, width: fillW, height: 4))
         barFill.wantsLayer = true
         barFill.layer?.backgroundColor = barColor.cgColor
-        barFill.layer?.cornerRadius = 2.5
+        barFill.layer?.cornerRadius = 2
         card.addSubview(barFill)
 
         return wrapper
@@ -209,29 +196,29 @@ private final class StatusBarInstance {
     /// Simple info card (title + value, no bar)
     private func makeInfoCard(title: String, value: String) -> NSView {
         let w = Self.menuWidth
-        let wrapper = NSView(frame: NSRect(x: 0, y: 0, width: w, height: 44))
+        let wrapper = NSView(frame: NSRect(x: 0, y: 0, width: w, height: 36))
 
-        let card = NSView(frame: NSRect(x: Self.cardInset, y: 2, width: w - Self.cardInset * 2, height: 40))
+        let card = NSView(frame: NSRect(x: Self.cardInset, y: 1, width: w - Self.cardInset * 2, height: 32))
         card.wantsLayer = true
         card.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.12).cgColor
-        card.layer?.cornerRadius = 8
+        card.layer?.cornerRadius = 7
         wrapper.addSubview(card)
 
         let cw = card.frame.width
         let p = Self.cardPad
 
         let titleLabel = NSTextField(labelWithString: title)
-        titleLabel.font = NSFont.systemFont(ofSize: 13, weight: .semibold)
+        titleLabel.font = NSFont.systemFont(ofSize: 12, weight: .semibold)
         titleLabel.textColor = .labelColor
-        titleLabel.frame = NSRect(x: p, y: 12, width: cw * 0.4, height: 16)
+        titleLabel.frame = NSRect(x: p, y: 8, width: cw * 0.38, height: 14)
         card.addSubview(titleLabel)
 
         let valueLabel = NSTextField(labelWithString: value)
-        valueLabel.font = NSFont.systemFont(ofSize: 12)
+        valueLabel.font = NSFont.systemFont(ofSize: 11)
         valueLabel.textColor = .secondaryLabelColor
         valueLabel.alignment = .right
         valueLabel.lineBreakMode = .byTruncatingTail
-        valueLabel.frame = NSRect(x: cw * 0.4, y: 12, width: cw * 0.6 - p, height: 16)
+        valueLabel.frame = NSRect(x: cw * 0.38, y: 8, width: cw * 0.62 - p, height: 14)
         card.addSubview(valueLabel)
 
         return wrapper
@@ -289,24 +276,6 @@ private final class StatusBarInstance {
             promptItem.view = makeInfoCard(title: "Prompt", value: truncated)
             menu.addItem(promptItem)
         }
-
-        menu.addItem(NSMenuItem.separator())
-
-        // Preview States submenu (debug)
-        let previewItem = NSMenuItem(title: "Preview States", action: nil, keyEquivalent: "")
-        let previewSubmenu = NSMenu()
-        for (state, name) in Self.stateNames {
-            let item = NSMenuItem(title: name, action: #selector(previewState(_:)), keyEquivalent: "")
-            item.target = self
-            item.representedObject = state.rawValue
-            if state == currentState { item.state = .on }
-            if let frames = frameCache[state], let firstFrame = frames.first {
-                item.image = firstFrame
-            }
-            previewSubmenu.addItem(item)
-        }
-        previewItem.submenu = previewSubmenu
-        menu.addItem(previewItem)
 
         menu.addItem(NSMenuItem.separator())
 
