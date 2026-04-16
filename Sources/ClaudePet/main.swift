@@ -29,6 +29,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             )
         }
 
+        httpServer.onPermissionRequest = { [weak self] pending in
+            guard let self else { return }
+            self.multiStatusBarController?.showPermissionBubble(
+                sessionId: pending.sessionId,
+                toolName: pending.toolName
+            ) { [weak self] decision in
+                self?.httpServer.resolvePermission(requestId: pending.requestId, decision: decision)
+            }
+        }
+
         httpServer.start(port: 23333)
         print("ClaudePet: running")
     }

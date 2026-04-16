@@ -53,7 +53,7 @@ public final class NotificationBubble: NSObject {
         title: String = "Claude Code",
         message: String,
         relativeTo button: NSStatusBarButton?,
-        duration: TimeInterval = 20.0,
+        duration: TimeInterval = 30.0,
         onAllow: @escaping () -> Void,
         onDeny: @escaping () -> Void
     ) {
@@ -242,18 +242,27 @@ private struct GlassPermissionView: View {
                     .lineLimit(6)
 
                 HStack(spacing: 8) {
-                    Button("Deny") { onDeny() }
-                        .buttonStyle(.bordered)
-                        .tint(.red)
-                        .controlSize(.large)
-                        .frame(minWidth: 84, minHeight: 34)
+                    Button(action: onDeny) {
+                        Text("Deny")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 32)
+                            .background(Color.red)
+                            .cornerRadius(8)
+                    }
+                    .buttonStyle(.plain)
 
-                    Button("Allow") { onAllow() }
-                        .buttonStyle(.borderedProminent)
-                        .tint(.green)
-                        .controlSize(.large)
-                        .font(.system(size: 13, weight: .semibold))
-                        .frame(maxWidth: .infinity, minHeight: 34)
+                    Button(action: onAllow) {
+                        Text("Allow")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 32)
+                            .background(Color.green)
+                            .cornerRadius(8)
+                    }
+                    .buttonStyle(.plain)
                 }
                 .frame(maxWidth: .infinity)
             }

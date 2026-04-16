@@ -11,8 +11,8 @@ PLIST_SRC="$SCRIPT_DIR/com.claude.pet.plist"
 PLIST_DST="$HOME/Library/LaunchAgents/com.claude.pet.plist"
 
 if [ ! -f "$SETTINGS" ]; then
-  echo "Error: $SETTINGS not found"
-  exit 1
+echo "Error: $SETTINGS not found"
+exit 1
 fi
 
 # Step 1: Build release binary
@@ -20,8 +20,8 @@ echo "ClaudePet: building release binary..."
 (cd "$SCRIPT_DIR" && swift build -c release 2>&1 | tail -5)
 BINARY="$SCRIPT_DIR/.build/release/ClaudePet"
 if [ ! -f "$BINARY" ]; then
-  echo "Error: build failed — release binary not found"
-  exit 1
+echo "Error: build failed — release binary not found"
+exit 1
 fi
 
 # Step 2: Install to ~/.claude/claude-pet/
@@ -44,55 +44,67 @@ statusline_path = os.environ["CLAUDE_PET_STATUSLINE_PATH"]
 hook_marker = "claude-pet-hook.sh"
 statusline_marker = "claude-pet-statusline.sh"
 events = ["SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUseFailure",
-          "SubagentStart", "SubagentStop", "Notification", "Elicitation",
-          "PermissionRequest", "Stop", "SessionEnd"]
+         "SubagentStart", "SubagentStop", "Notification", "Elicitation",
+          "Stop", "SessionEnd"]
 
 with open(settings_path, "r") as f:
-    settings = json.load(f)
+   settings = json.load(f)
 
 hooks = settings.setdefault("hooks", {})
 
 # Remove all old claude-pet hooks (any path)
 removed = 0
 for event in list(hooks.keys()):
-    original = hooks[event]
-    filtered = []
-    for entry in original:
-        cmd = entry.get("command", "")
-        nested = entry.get("hooks", [])
-        is_claude_pet = hook_marker in cmd or any(hook_marker in h.get("command", "") for h in nested)
-        if is_claude_pet:
-            removed += 1
-        else:
-            filtered.append(entry)
-    hooks[event] = filtered
+   original = hooks[event]
+   filtered = []
+   for entry in original:
+       cmd = entry.get("command", "")
+       nested = entry.get("hooks", [])
+       is_permission_http = any(h.get("type") == "http" and h.get("url") == "http://127.0.0.1:23333/permission" for h in nested)
+       is_claude_pet = hook_marker in cmd or any(hook_marker in h.get("command", "") for h in nested) or is_permission_http
+       if is_claude_pet:
+           removed += 1
+       else:
+           filtered.append(entry)
+   hooks[event] = filtered
 
 # Add new hooks with canonical path
 added = 0
 for event in events:
-    entries = hooks.setdefault(event, [])
-    command = f'sh "{hook_path}" {event}'
-    entries.append({
-        "matcher": "",
-        "hooks": [{"type": "command", "command": command}]
-    })
-    added += 1
+   entries = hooks.setdefault(event, [])
+   command = f'sh "{hook_path}" {event}'
+   entries.append({
+       "matcher": "",
+       "hooks": [{"type": "command", "command": command}]
+   })
+   added += 1
+
+permission_entries = hooks.setdefault("PermissionRequest", [])
+permission_entries.append({
+    "matcher": "",
+    "hooks": [{
+        "type": "http",
+        "url": "http://127.0.0.1:23333/permission",
+        "timeout": 600
+    }]
+})
+added += 1
 
 existing_statusline = settings.get("statusLine")
 replaced_statusline = 0
 if isinstance(existing_statusline, dict):
-    existing_command = existing_statusline.get("command", "")
-    if statusline_marker in existing_command:
-        replaced_statusline = 1
+   existing_command = existing_statusline.get("command", "")
+   if statusline_marker in existing_command:
+       replaced_statusline = 1
 
 settings["statusLine"] = {
-    "type": "command",
-    "command": f'sh "{statusline_path}"',
+   "type": "command",
+   "command": f'sh "{statusline_path}"',
 }
 
 with open(settings_path, "w") as f:
-    json.dump(settings, f, indent=2, ensure_ascii=False)
-    f.write("\n")
+   json.dump(settings, f, indent=2, ensure_ascii=False)
+   f.write("\n")
 
 print(f"ClaudePet: registered {added} hooks (removed {removed} old entries), statusLine={'updated' if replaced_statusline else 'installed'}")
 PYEOF
