@@ -49,7 +49,7 @@ public final class HttpServer: @unchecked Sendable {
     public var onStateEvent: ((HookEvent) -> Void)?
     public var onContextUpdate: ((String, ContextInfo) -> Void)?
     public var onPermissionRequest: ((PendingPermissionRequest) -> Void)?
-    public var onPermissionResolved: ((String) -> Void)?  // sessionId - called when CLI resolves
+    public var onPermissionResolved: ((String) -> Void)?
 
     public init() {}
 
@@ -87,7 +87,18 @@ public final class HttpServer: @unchecked Sendable {
     private func handleConnection(_ connection: NWConnection) {
         connection.start(queue: .main)
 
-        connection.receive(minimumIncompleteLength: 1, maximumLength: 65536) { [weak self] data, _, isComplete, error in
+        connection.stateUpdateHandler = { [weak self, weak connection] state in
+            guard let connection else { return }
+            switch state {
+            case .cancelled, .failed:
+                self?.handleConnectionClosed(connection)
+            default:
+                break
+            }
+        }
+
+        connection.receive(minimumIncompleteLength: 1, maximumLength: 65536) { [weak self, weak connection] data, _, isComplete, error in
+            guard let connection else { return }
             if isComplete || error != nil {
                 self?.handleConnectionClosed(connection)
                 connection.cancel()
@@ -142,6 +153,16 @@ public final class HttpServer: @unchecked Sendable {
                 sendResponse(connection: connection, status: 400, body: "missing fields")
                 return
             }
+
+            // If we get a state event for a session with pending permission, dismiss it
+            // This handles the case where user responds in CLI instead of bubble
+            if hasPendingPermission(for: sessionId) {
+                cancelPendingPermission(for: sessionId)
+                DispatchQueue.main.async {
+                    self.onPermissionResolved?(sessionId)
+                }
+            }
+
             let hookEvent = HookEvent(
                 state: state,
                 sessionId: sessionId,
@@ -191,6 +212,9 @@ public final class HttpServer: @unchecked Sendable {
             )
             pendingPermissions[requestId] = PendingPermission(request: request, connection: connection)
 
+            // Keep receiving to detect connection close
+            continueReceiving(connection: connection)
+
             if let onPermissionRequest {
                 onPermissionRequest(request)
             } else {
@@ -202,7 +226,9 @@ public final class HttpServer: @unchecked Sendable {
     }
 
     public func resolvePermission(requestId: String, decision: PermissionDecision) {
-        guard let pending = pendingPermissions.removeValue(forKey: requestId) else { return }
+        guard let pending = pendingPermissions.removeValue(forKey: requestId) else {
+            return
+        }
 
         var payload: [String: Any] = [
             "behavior": decision.behavior.rawValue
@@ -224,6 +250,32 @@ public final class HttpServer: @unchecked Sendable {
 
     public func pendingPermissionCount() -> Int {
         pendingPermissions.count
+    }
+
+    public func hasPendingPermission(for sessionId: String) -> Bool {
+        pendingPermissions.contains { $0.value.sessionId == sessionId }
+    }
+
+    public func cancelPendingPermission(for sessionId: String) {
+        for (requestId, pending) in pendingPermissions {
+            if pending.sessionId == sessionId {
+                pendingPermissions.removeValue(forKey: requestId)
+                pending.connection.cancel()
+                break
+            }
+        }
+    }
+
+    private func continueReceiving(connection: NWConnection) {
+        connection.receive(minimumIncompleteLength: 1, maximumLength: 1) { [weak self, weak connection] _, _, isComplete, error in
+            guard let connection else { return }
+            if isComplete || error != nil {
+                self?.handleConnectionClosed(connection)
+                connection.cancel()
+            } else {
+                self?.continueReceiving(connection: connection)
+            }
+        }
     }
 
     private static func stringifyJSON(_ value: Any?) -> String {

@@ -16,7 +16,13 @@ public final class NotificationBubble: NSObject {
         relativeTo button: NSStatusBarButton?,
         duration: TimeInterval = 7.0
     ) {
+        // Don't show notification if permission bubble is active
         guard !isShowingPermission else { return }
+
+        // Dismiss any existing notification bubble first
+        if panel != nil {
+            dismiss()
+        }
 
         let vm = BubbleViewModel()
         let bubbleView = GlassNotificationView(title: title, message: message, viewModel: vm)
