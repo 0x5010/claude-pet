@@ -7,6 +7,7 @@ public final class NotificationBubble: NSObject {
     private var dismissTimer: Timer?
     private var viewModel: BubbleViewModel?
     private var permissionTimeoutAction: (() -> Void)?
+    private var isShowingPermission = false
 
     public override init() { super.init() }
 
@@ -16,7 +17,8 @@ public final class NotificationBubble: NSObject {
         relativeTo button: NSStatusBarButton?,
         duration: TimeInterval = 7.0
     ) {
-        dismiss()
+        // Don't show regular notification if permission bubble is active
+        guard !isShowingPermission else { return }
         permissionTimeoutAction = nil
 
         let vm = BubbleViewModel()
@@ -53,11 +55,12 @@ public final class NotificationBubble: NSObject {
         title: String = "Claude Code",
         message: String,
         relativeTo button: NSStatusBarButton?,
-        duration: TimeInterval = 30.0,
+        duration: TimeInterval = 20.0,
         onAllow: @escaping () -> Void,
         onDeny: @escaping () -> Void
     ) {
         dismiss()
+        isShowingPermission = true
 
         let vm = BubbleViewModel()
         let bubbleView = GlassPermissionView(
@@ -165,6 +168,7 @@ public final class NotificationBubble: NSObject {
         dismissTimer?.invalidate()
         dismissTimer = nil
         permissionTimeoutAction = nil
+        isShowingPermission = false
         panel?.orderOut(nil)
         panel = nil
         viewModel = nil
