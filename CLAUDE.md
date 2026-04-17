@@ -6,8 +6,8 @@ macOS menu bar pixel pet showing Claude Code status. Pure Swift/AppKit, zero ext
 
 ```bash
 # Dev build + restart
-swift build && cp .build/debug/ClaudePet ClaudePet.app/Contents/MacOS/ClaudePet
-pkill -9 -f ClaudePet; sleep 2; open ClaudePet.app
+swift build && /bin/cp -f .build/debug/ClaudePet ~/.claude/claude-pet/ClaudePet
+pkill -9 -f ClaudePet; sleep 1; ~/.claude/claude-pet/ClaudePet &
 
 # Release build (for install.sh / LaunchAgent)
 swift build -c release
@@ -19,7 +19,7 @@ swift build --build-tests 2>&1 && .build/debug/ClaudePetPackageTests.xctest/Cont
 swift run GenerateGifs assets
 ```
 
-**CRITICAL**: `swift build` outputs to `.build/debug/`, but `ClaudePet.app/Contents/MacOS/` is what `open ClaudePet.app` runs. Must copy binary after build.
+**CRITICAL**: Run `pkill -9 -f ClaudePet` to kill all processes before restarting. Use `/bin/cp -f` to bypass interactive alias. The app runs from `~/.claude/claude-pet/ClaudePet` via LaunchAgent.
 
 ## Architecture
 

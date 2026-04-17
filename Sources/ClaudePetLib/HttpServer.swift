@@ -44,10 +44,12 @@ public struct PermissionDecision {
 
 public final class HttpServer: @unchecked Sendable {
     private var listener: NWListener?
-    private var pendingPermissionConnections: [String: NWConnection] = [:]
+    private var pendingPermissions: [String: PendingPermission] = [:]
+
     public var onStateEvent: ((HookEvent) -> Void)?
-    public var onContextUpdate: ((String, ContextInfo) -> Void)?  // (sessionId, info)
+    public var onContextUpdate: ((String, ContextInfo) -> Void)?
     public var onPermissionRequest: ((PendingPermissionRequest) -> Void)?
+    public var onPermissionResolved: ((String) -> Void)?
 
     public init() {}
 
@@ -84,12 +86,41 @@ public final class HttpServer: @unchecked Sendable {
 
     private func handleConnection(_ connection: NWConnection) {
         connection.start(queue: .main)
-        connection.receive(minimumIncompleteLength: 1, maximumLength: 8192) { [weak self] data, _, _, error in
-            guard let data = data, error == nil else {
+
+        connection.stateUpdateHandler = { [weak self, weak connection] state in
+            guard let connection else { return }
+            switch state {
+            case .cancelled, .failed:
+                self?.handleConnectionClosed(connection)
+            default:
+                break
+            }
+        }
+
+        connection.receive(minimumIncompleteLength: 1, maximumLength: 65536) { [weak self, weak connection] data, _, isComplete, error in
+            guard let connection else { return }
+            if isComplete || error != nil {
+                self?.handleConnectionClosed(connection)
+                connection.cancel()
+                return
+            }
+            guard let data = data else {
                 connection.cancel()
                 return
             }
             self?.parseHttpRequest(data: data, connection: connection)
+        }
+    }
+
+    private func handleConnectionClosed(_ connection: NWConnection) {
+        for (requestId, pending) in pendingPermissions {
+            if pending.connection === connection {
+                pendingPermissions.removeValue(forKey: requestId)
+                DispatchQueue.main.async {
+                    self.onPermissionResolved?(pending.sessionId)
+                }
+                break
+            }
         }
     }
 
@@ -122,6 +153,16 @@ public final class HttpServer: @unchecked Sendable {
                 sendResponse(connection: connection, status: 400, body: "missing fields")
                 return
             }
+
+            // If we get a state event for a session with pending permission, dismiss it
+            // This handles the case where user responds in CLI instead of bubble
+            if hasPendingPermission(for: sessionId) {
+                cancelPendingPermission(for: sessionId)
+                DispatchQueue.main.async {
+                    self.onPermissionResolved?(sessionId)
+                }
+            }
+
             let hookEvent = HookEvent(
                 state: state,
                 sessionId: sessionId,
@@ -139,7 +180,6 @@ public final class HttpServer: @unchecked Sendable {
             let ctxWindow = json["context_window"] as? [String: Any] ?? [:]
             let model = json["model"] as? [String: Any] ?? [:]
             let sessionId = json["session_id"] as? String ?? ""
-            // current_usage can be an Int (legacy) or a nested object from statusLine
             let currentUsage: Int
             if let directValue = ctxWindow["current_usage"] as? Int {
                 currentUsage = directValue
@@ -164,15 +204,19 @@ public final class HttpServer: @unchecked Sendable {
                 return
             }
             let requestId = UUID().uuidString
-            let pending = PendingPermissionRequest(
+            let request = PendingPermissionRequest(
                 requestId: requestId,
                 sessionId: sessionId,
                 toolName: json["tool_name"] as? String ?? "",
                 toolInput: Self.stringifyJSON(json["tool_input"])
             )
-            pendingPermissionConnections[requestId] = connection
+            pendingPermissions[requestId] = PendingPermission(request: request, connection: connection)
+
+            // Keep receiving to detect connection close
+            continueReceiving(connection: connection)
+
             if let onPermissionRequest {
-                onPermissionRequest(pending)
+                onPermissionRequest(request)
             } else {
                 resolvePermission(requestId: requestId, decision: PermissionDecision(behavior: .deny, message: "permission handler unavailable"))
             }
@@ -182,7 +226,9 @@ public final class HttpServer: @unchecked Sendable {
     }
 
     public func resolvePermission(requestId: String, decision: PermissionDecision) {
-        guard let connection = pendingPermissionConnections.removeValue(forKey: requestId) else { return }
+        guard let pending = pendingPermissions.removeValue(forKey: requestId) else {
+            return
+        }
 
         var payload: [String: Any] = [
             "behavior": decision.behavior.rawValue
@@ -199,11 +245,37 @@ public final class HttpServer: @unchecked Sendable {
         ]
         let data = (try? JSONSerialization.data(withJSONObject: responseObj, options: [])) ?? Data("{}".utf8)
         let body = String(data: data, encoding: .utf8) ?? "{}"
-        sendResponse(connection: connection, status: 200, body: body)
+        sendResponse(connection: pending.connection, status: 200, body: body)
     }
 
     public func pendingPermissionCount() -> Int {
-        pendingPermissionConnections.count
+        pendingPermissions.count
+    }
+
+    public func hasPendingPermission(for sessionId: String) -> Bool {
+        pendingPermissions.contains { $0.value.sessionId == sessionId }
+    }
+
+    public func cancelPendingPermission(for sessionId: String) {
+        for (requestId, pending) in pendingPermissions {
+            if pending.sessionId == sessionId {
+                pendingPermissions.removeValue(forKey: requestId)
+                pending.connection.cancel()
+                break
+            }
+        }
+    }
+
+    private func continueReceiving(connection: NWConnection) {
+        connection.receive(minimumIncompleteLength: 1, maximumLength: 1) { [weak self, weak connection] _, _, isComplete, error in
+            guard let connection else { return }
+            if isComplete || error != nil {
+                self?.handleConnectionClosed(connection)
+                connection.cancel()
+            } else {
+                self?.continueReceiving(connection: connection)
+            }
+        }
     }
 
     private static func stringifyJSON(_ value: Any?) -> String {
@@ -224,4 +296,10 @@ public final class HttpServer: @unchecked Sendable {
             connection.cancel()
         })
     }
+}
+
+private struct PendingPermission {
+    let request: PendingPermissionRequest
+    let connection: NWConnection
+    var sessionId: String { request.sessionId }
 }

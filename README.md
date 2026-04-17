@@ -33,6 +33,13 @@ Claude Code → hook event (e.g. PreToolUse) → claude-pet-hook.sh → curl POS
 
 Each Claude Code session gets its own menu bar icon (up to 5 concurrent sessions).
 
+## Features
+
+- **Real-time state tracking**: Shows thinking, working, error, happy states
+- **Permission bubbles**: Interactive permission requests with command preview
+- **Context monitoring**: Visual context window usage indicator
+- **Multi-session support**: Up to 5 concurrent Claude Code sessions
+
 ## Install
 
 ### Prerequisites
@@ -58,6 +65,23 @@ bash hooks/install.sh
 
 A small pixel character should appear in your menu bar.
 
+### Multiple Settings Files
+
+If you use different Claude Code launch methods (e.g., `claude` and `claude-w`), you can configure multiple settings files:
+
+```bash
+# Configure both settings.json and llmbox.json
+bash hooks/install.sh --extra-settings llmbox.json
+
+# Or with short option
+bash hooks/install.sh -s llmbox.json
+
+# Multiple extra files
+bash hooks/install.sh -s llmbox.json -s custom.json
+```
+
+Run `bash hooks/install.sh --help` for all options.
+
 ### Verify
 
 Click the icon to see a menu with session info. Use the **Preview States** submenu to test each animation.
@@ -78,9 +102,13 @@ Click the icon to see a menu with session info. Use the **Preview States** subme
 | Claude Code finishes | Happy bounce, then idle |
 | 60s no activity | Zzz sleeping |
 
-### Multi-Session Support
+### Permission Bubbles
 
-Each Claude Code session gets its own status bar icon (up to 5). The menu shows per-session info including working directory, model name, context usage, and last prompt.
+When Claude Code needs permission to run a tool, ClaudePet shows an interactive bubble:
+- Shows tool name and command preview
+- Click to expand/collapse long commands
+- **Allow** or **Deny** buttons
+- Dismisses when you respond (via bubble buttons or CLI)
 
 ### Context Usage
 
@@ -90,25 +118,17 @@ The menu displays a color-coded context window usage bar:
 ## Uninstall
 
 ```bash
-# Stop and remove auto-start
+# Quick uninstall
+bash hooks/uninstall.sh
+
+# Or manual uninstall:
+# 1. Stop and remove auto-start
 launchctl unload ~/Library/LaunchAgents/com.claude.pet.plist 2>/dev/null
 rm -f ~/Library/LaunchAgents/com.claude.pet.plist
 
-# Remove hooks from Claude Code settings
-python3 -c "
-import json, os
-p = os.path.expanduser('~/.claude/settings.json')
-s = json.load(open(p))
-for k in list(s.get('hooks', {}).keys()):
-    s['hooks'][k] = [h for h in s['hooks'][k]
-                     if 'claude-pet-hook' not in str(h)]
-    if not s['hooks'][k]: del s['hooks'][k]
-json.dump(s, open(p, 'w'), indent=2, ensure_ascii=False)
-print('Hooks removed')
-"
-
-# Delete app
-rm -rf ~/claude-pet
+# 2. Remove hooks from settings files (optional, uninstall.sh handles this)
+# 3. Delete installed app
+rm -rf ~/.claude/claude-pet
 ```
 
 ## Project Structure
@@ -129,6 +149,7 @@ claude-pet/
 │   └── StateManagerTests.swift          # 45+ unit tests for state machine
 ├── hooks/
 │   ├── install.sh                       # One-command setup (hooks + LaunchAgent)
+│   ├── uninstall.sh                     # Remove ClaudePet completely
 │   └── claude-pet-hook.sh               # Event→state mapper, POSTs to :23333
 ├── assets/                              # Generated GIF previews
 └── com.claude.pet.plist                  # LaunchAgent template
@@ -141,8 +162,8 @@ claude-pet/
 swift build
 
 # Build + restart app
-swift build && cp .build/debug/ClaudePet ClaudePet.app/Contents/MacOS/ClaudePet
-pkill -9 -f ClaudePet; sleep 2; open ClaudePet.app
+swift build && /bin/cp -f .build/debug/ClaudePet ~/.claude/claude-pet/ClaudePet
+pkill -9 -f ClaudePet; sleep 1; ~/.claude/claude-pet/ClaudePet &
 
 # Run tests
 swift build --build-tests 2>&1 && \

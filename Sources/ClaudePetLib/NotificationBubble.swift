@@ -6,7 +6,6 @@ public final class NotificationBubble: NSObject {
     private var panel: NSPanel?
     private var dismissTimer: Timer?
     private var viewModel: BubbleViewModel?
-    private var permissionTimeoutAction: (() -> Void)?
     private var isShowingPermission = false
 
     public override init() { super.init() }
@@ -17,9 +16,13 @@ public final class NotificationBubble: NSObject {
         relativeTo button: NSStatusBarButton?,
         duration: TimeInterval = 7.0
     ) {
-        // Don't show regular notification if permission bubble is active
+        // Don't show notification if permission bubble is active
         guard !isShowingPermission else { return }
-        permissionTimeoutAction = nil
+
+        // Dismiss any existing notification bubble first
+        if panel != nil {
+            dismiss()
+        }
 
         let vm = BubbleViewModel()
         let bubbleView = GlassNotificationView(title: title, message: message, viewModel: vm)
@@ -54,8 +57,8 @@ public final class NotificationBubble: NSObject {
     public func showPermission(
         title: String = "Claude Code",
         message: String,
+        toolInput: String = "",
         relativeTo button: NSStatusBarButton?,
-        duration: TimeInterval = 20.0,
         onAllow: @escaping () -> Void,
         onDeny: @escaping () -> Void
     ) {
@@ -66,6 +69,7 @@ public final class NotificationBubble: NSObject {
         let bubbleView = GlassPermissionView(
             title: title,
             message: message,
+            toolInput: toolInput,
             viewModel: vm,
             onAllow: { [weak self] in
                 onAllow()
@@ -76,15 +80,17 @@ public final class NotificationBubble: NSObject {
                 self?.dismiss()
             }
         )
-        permissionTimeoutAction = onDeny
         let hostingView = NSHostingView(rootView: bubbleView)
         hostingView.setFrameSize(hostingView.fittingSize)
 
-        let w = min(max(hostingView.fittingSize.width, 260), 420)
-        let contentH = min(max(hostingView.fittingSize.height, 90), 260)
-        let h = min(contentH + 20, 280)
+        let lineCount = toolInput.isEmpty ? 0 : toolInput.components(separatedBy: "\n").count
+        let w: CGFloat = 360
+        let baseUIHeight: CGFloat = 100
+        let commandHeight = toolInput.isEmpty ? 0 : min(120, max(60, CGFloat(min(lineCount, 5)) * 14 + 40))
+        let initialH = baseUIHeight + commandHeight + 40
+        let h = initialH + 20
 
-        let panel = makePanel(relativeTo: button, width: w, contentHeight: contentH, panelHeight: h)
+        let panel = makePanel(relativeTo: button, width: w, contentHeight: initialH, panelHeight: h)
         panel.ignoresMouseEvents = false
         panel.contentView = hostingView
 
@@ -97,14 +103,11 @@ public final class NotificationBubble: NSObject {
                 vm.isVisible = true
             }
         }
+    }
 
-        dismissTimer = Timer.scheduledTimer(withTimeInterval: duration, repeats: false) { [weak self] _ in
-            Task { @MainActor in
-                guard let self else { return }
-                self.permissionTimeoutAction?()
-                self.animateOut()
-            }
-        }
+    public func dismissPermission() {
+        guard isShowingPermission else { return }
+        animateOut()
     }
 
     private func makePanel(relativeTo button: NSStatusBarButton?, width: CGFloat, contentHeight: CGFloat, panelHeight: CGFloat) -> NSPanel {
@@ -151,7 +154,7 @@ public final class NotificationBubble: NSObject {
     private func animateOut() {
         dismissTimer?.invalidate()
         dismissTimer = nil
-        permissionTimeoutAction = nil
+        isShowingPermission = false
         guard let vm = viewModel, let panel = panel else { return }
         withAnimation(.easeIn(duration: 0.25)) {
             vm.isVisible = false
@@ -167,7 +170,6 @@ public final class NotificationBubble: NSObject {
     public func dismiss() {
         dismissTimer?.invalidate()
         dismissTimer = nil
-        permissionTimeoutAction = nil
         isShowingPermission = false
         panel?.orderOut(nil)
         panel = nil
@@ -226,13 +228,42 @@ private struct GlassNotificationView: View {
 private struct GlassPermissionView: View {
     let title: String
     let message: String
+    let toolInput: String
     @ObservedObject var viewModel: BubbleViewModel
     let onAllow: () -> Void
     let onDeny: () -> Void
 
+    @State private var isExpanded = false
+
+    private var lineCount: Int {
+        toolInput.isEmpty ? 0 : toolInput.components(separatedBy: "\n").count
+    }
+
+    private var canExpand: Bool {
+        lineCount > 5
+    }
+
+    private var collapsedHeight: CGFloat {
+        guard !toolInput.isEmpty else { return 0 }
+        return max(60, min(120, CGFloat(min(lineCount, 5)) * 14 + 40))
+    }
+
+    private var expandedHeight: CGFloat {
+        guard !toolInput.isEmpty else { return 0 }
+        return max(120, min(300, CGFloat(lineCount) * 14 + 60))
+    }
+
+    private var displayText: String {
+        guard !toolInput.isEmpty else { return "" }
+        if isExpanded || lineCount <= 5 {
+            return toolInput
+        }
+        return toolInput.components(separatedBy: "\n").prefix(5).joined(separator: "\n") + "\n..."
+    }
+
     var body: some View {
         GlassBubbleBase(viewModel: viewModel) {
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 8) {
                 if !title.isEmpty {
                     Text(title)
                         .font(.system(size: 13, weight: .semibold))
@@ -243,34 +274,70 @@ private struct GlassPermissionView: View {
                 Text(message)
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(.primary)
-                    .lineLimit(6)
+                    .lineLimit(2)
+
+                if !toolInput.isEmpty {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Button(action: {
+                            withAnimation(.snappy(duration: 0.2)) {
+                                isExpanded.toggle()
+                            }
+                        }) {
+                            HStack(spacing: 4) {
+                                Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                                    .font(.system(size: 10, weight: .semibold))
+                                Text(canExpand ? "Command (\(lineCount) lines)" : "Command")
+                                    .font(.system(size: 10, weight: .medium))
+                                Spacer()
+                                if canExpand && !isExpanded {
+                                    Text("+\(lineCount - 5) more")
+                                        .font(.system(size: 9, weight: .regular))
+                                        .foregroundStyle(.tertiary)
+                                }
+                            }
+                            .foregroundStyle(.secondary)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+
+                        ScrollView {
+                            Text(displayText)
+                                .font(.system(size: 9, weight: .regular, design: .monospaced))
+                                .foregroundStyle(.primary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .frame(height: isExpanded ? expandedHeight : collapsedHeight)
+                        .padding(6)
+                        .background(Color.black.opacity(0.05), in: RoundedRectangle(cornerRadius: 6))
+                    }
+                }
 
                 HStack(spacing: 8) {
                     Button(action: onDeny) {
                         Text("Deny")
-                            .font(.system(size: 14, weight: .semibold))
+                            .font(.system(size: 13, weight: .semibold))
                             .foregroundStyle(.white)
                             .frame(maxWidth: .infinity)
-                            .frame(height: 32)
+                            .frame(height: 30)
                             .background(Color.red)
-                            .cornerRadius(8)
+                            .cornerRadius(7)
                     }
                     .buttonStyle(.plain)
 
                     Button(action: onAllow) {
                         Text("Allow")
-                            .font(.system(size: 14, weight: .semibold))
+                            .font(.system(size: 13, weight: .semibold))
                             .foregroundStyle(.white)
                             .frame(maxWidth: .infinity)
-                            .frame(height: 32)
+                            .frame(height: 30)
                             .background(Color.green)
-                            .cornerRadius(8)
+                            .cornerRadius(7)
                     }
                     .buttonStyle(.plain)
                 }
                 .frame(maxWidth: .infinity)
             }
-            .frame(minWidth: 260, maxWidth: 420, maxHeight: 260, alignment: .leading)
+            .frame(width: 320)
         }
     }
 }
