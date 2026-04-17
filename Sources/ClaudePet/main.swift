@@ -33,10 +33,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             guard let self else { return }
             self.multiStatusBarController?.showPermissionBubble(
                 sessionId: pending.sessionId,
-                toolName: pending.toolName
+                toolName: pending.toolName,
+                toolInput: pending.toolInput
             ) { [weak self] decision in
                 self?.httpServer.resolvePermission(requestId: pending.requestId, decision: decision)
             }
+        }
+
+        httpServer.onPermissionDismiss = { [weak self] sessionId in
+            self?.multiStatusBarController?.dismissPermissionBubble(sessionId: sessionId)
         }
 
         httpServer.start(port: 23333)

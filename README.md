@@ -33,6 +33,13 @@ Claude Code → hook event (e.g. PreToolUse) → claude-pet-hook.sh → curl POS
 
 Each Claude Code session gets its own menu bar icon (up to 5 concurrent sessions).
 
+## Features
+
+- **Real-time state tracking**: Shows thinking, working, error, happy states
+- **Permission bubbles**: Interactive permission requests with command preview
+- **Context monitoring**: Visual context window usage indicator
+- **Multi-session support**: Up to 5 concurrent Claude Code sessions
+
 ## Install
 
 ### Prerequisites
@@ -58,6 +65,23 @@ bash hooks/install.sh
 
 A small pixel character should appear in your menu bar.
 
+### Multiple Settings Files
+
+If you use different Claude Code launch methods (e.g., `claude` and `claude-w`), you can configure multiple settings files:
+
+```bash
+# Configure both settings.json and llmbox.json
+bash hooks/install.sh --extra-settings llmbox.json
+
+# Or with short option
+bash hooks/install.sh -s llmbox.json
+
+# Multiple extra files
+bash hooks/install.sh -s llmbox.json -s custom.json
+```
+
+Run `bash hooks/install.sh --help` for all options.
+
 ### Verify
 
 Click the icon to see a menu with session info. Use the **Preview States** submenu to test each animation.
@@ -78,9 +102,13 @@ Click the icon to see a menu with session info. Use the **Preview States** subme
 | Claude Code finishes | Happy bounce, then idle |
 | 60s no activity | Zzz sleeping |
 
-### Multi-Session Support
+### Permission Bubbles
 
-Each Claude Code session gets its own status bar icon (up to 5). The menu shows per-session info including working directory, model name, context usage, and last prompt.
+When Claude Code needs permission to run a tool, ClaudePet shows an interactive bubble:
+- Shows tool name and command preview
+- Click to expand/collapse long commands
+- **Allow** or **Deny** buttons
+- Auto-dismisses when you respond in CLI
 
 ### Context Usage
 
@@ -94,20 +122,40 @@ The menu displays a color-coded context window usage bar:
 launchctl unload ~/Library/LaunchAgents/com.claude.pet.plist 2>/dev/null
 rm -f ~/Library/LaunchAgents/com.claude.pet.plist
 
-# Remove hooks from Claude Code settings
+# Remove hooks from all Claude Code settings files
 python3 -c "
 import json, os
-p = os.path.expanduser('~/.claude/settings.json')
-s = json.load(open(p))
-for k in list(s.get('hooks', {}).keys()):
-    s['hooks'][k] = [h for h in s['hooks'][k]
-                     if 'claude-pet-hook' not in str(h)]
-    if not s['hooks'][k]: del s['hooks'][k]
-json.dump(s, open(p, 'w'), indent=2, ensure_ascii=False)
-print('Hooks removed')
+for filename in ['settings.json', 'llmbox.json']:
+    p = os.path.expanduser(f'~/.claude/{filename}')
+    if not os.path.exists(p):
+        continue
+    with open(p, 'r') as f:
+        s = json.load(f)
+    hooks = s.get('hooks', {})
+    for k in list(hooks.keys()):
+        original = hooks[k]
+        filtered = []
+        for entry in original:
+            cmd = entry.get('command', '')
+            nested = entry.get('hooks', [])
+            is_http_hook = any(h.get('type') == 'http' and '23333' in h.get('url', '') for h in nested)
+            if 'claude-pet-hook' not in cmd and 'claude-pet-statusline' not in cmd and not is_http_hook:
+                filtered.append(entry)
+        if filtered:
+            hooks[k] = filtered
+        else:
+            del s['hooks'][k]
+    if 'statusLine' in s and 'claude-pet-statusline' in str(s.get('statusLine', {})):
+        del s['statusLine']
+    with open(p, 'w') as f:
+        json.dump(s, f, indent=2, ensure_ascii=False)
+    print(f'Cleaned {filename}')
 "
 
-# Delete app
+# Delete installed app
+rm -rf ~/.claude/claude-pet
+
+# Delete source (optional)
 rm -rf ~/claude-pet
 ```
 

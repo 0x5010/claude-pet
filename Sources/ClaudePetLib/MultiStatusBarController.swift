@@ -305,7 +305,7 @@ private final class StatusBarInstance {
         bubble.show(title: title, message: message, relativeTo: statusItem.button)
     }
 
-    func showPermissionBubble(toolName: String, onDecision: @escaping (PermissionDecision) -> Void) {
+    func showPermissionBubble(toolName: String, toolInput: String, onDecision: @escaping (PermissionDecision) -> Void) {
         let dir = (cwd as NSString).lastPathComponent
         let title = dir.isEmpty ? "" : dir
         let trimmedTool = toolName.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -313,11 +313,16 @@ private final class StatusBarInstance {
         bubble.showPermission(
             title: title,
             message: "Allow \(toolText) to run?",
+            toolInput: toolInput,
             relativeTo: statusItem.button,
             duration: 20.0,
             onAllow: { onDecision(PermissionDecision(behavior: .allow)) },
             onDeny: { onDecision(PermissionDecision(behavior: .deny)) }
         )
+    }
+
+    func dismissPermissionBubble() {
+        bubble.dismissPermission()
     }
 
     // MARK: - State & animation (Core Animation driven)
@@ -530,7 +535,7 @@ public final class MultiStatusBarController {
         instance.transitionTo(state)
     }
 
-    public func showPermissionBubble(sessionId: String, toolName: String, onDecision: @escaping (PermissionDecision) -> Void) {
+    public func showPermissionBubble(sessionId: String, toolName: String, toolInput: String, onDecision: @escaping (PermissionDecision) -> Void) {
         if instances[sessionId] == nil {
             let cwd = stateManager.sessions[sessionId]?.cwd ?? ""
             addInstance(sessionId: sessionId, cwd: cwd)
@@ -539,7 +544,11 @@ public final class MultiStatusBarController {
             onDecision(PermissionDecision(behavior: .deny, message: "session unavailable"))
             return
         }
-        instance.showPermissionBubble(toolName: toolName, onDecision: onDecision)
+        instance.showPermissionBubble(toolName: toolName, toolInput: toolInput, onDecision: onDecision)
+    }
+
+    public func dismissPermissionBubble(sessionId: String) {
+        instances[sessionId]?.dismissPermissionBubble()
     }
 
     // MARK: - StateManager callbacks
