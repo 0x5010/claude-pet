@@ -35,7 +35,8 @@ echo "ClaudePet: installed to $INSTALL_DIR"
 # Step 3: Register hooks + statusLine
 export CLAUDE_PET_HOOK_PATH="$INSTALL_DIR/$HOOK_SCRIPT"
 export CLAUDE_PET_STATUSLINE_PATH="$INSTALL_DIR/$STATUSLINE_SCRIPT"
-/usr/bin/python3 << 'PYEOF'
+PYTHON=$(command -v python3 2>/dev/null) || { echo "Error: python3 not found"; exit 1; }
+"$PYTHON" << 'PYEOF'
 import json, os
 
 settings_path = os.path.expanduser("~/.claude/settings.json")
