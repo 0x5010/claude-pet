@@ -108,7 +108,7 @@ When Claude Code needs permission to run a tool, ClaudePet shows an interactive 
 - Shows tool name and command preview
 - Click to expand/collapse long commands
 - **Allow** or **Deny** buttons
-- Auto-dismisses when you respond in CLI
+- Dismisses when you respond (via bubble buttons or CLI)
 
 ### Context Usage
 
@@ -118,45 +118,17 @@ The menu displays a color-coded context window usage bar:
 ## Uninstall
 
 ```bash
-# Stop and remove auto-start
+# Quick uninstall
+bash hooks/uninstall.sh
+
+# Or manual uninstall:
+# 1. Stop and remove auto-start
 launchctl unload ~/Library/LaunchAgents/com.claude.pet.plist 2>/dev/null
 rm -f ~/Library/LaunchAgents/com.claude.pet.plist
 
-# Remove hooks from all Claude Code settings files
-python3 -c "
-import json, os
-for filename in ['settings.json', 'llmbox.json']:
-    p = os.path.expanduser(f'~/.claude/{filename}')
-    if not os.path.exists(p):
-        continue
-    with open(p, 'r') as f:
-        s = json.load(f)
-    hooks = s.get('hooks', {})
-    for k in list(hooks.keys()):
-        original = hooks[k]
-        filtered = []
-        for entry in original:
-            cmd = entry.get('command', '')
-            nested = entry.get('hooks', [])
-            is_http_hook = any(h.get('type') == 'http' and '23333' in h.get('url', '') for h in nested)
-            if 'claude-pet-hook' not in cmd and 'claude-pet-statusline' not in cmd and not is_http_hook:
-                filtered.append(entry)
-        if filtered:
-            hooks[k] = filtered
-        else:
-            del s['hooks'][k]
-    if 'statusLine' in s and 'claude-pet-statusline' in str(s.get('statusLine', {})):
-        del s['statusLine']
-    with open(p, 'w') as f:
-        json.dump(s, f, indent=2, ensure_ascii=False)
-    print(f'Cleaned {filename}')
-"
-
-# Delete installed app
+# 2. Remove hooks from settings files (optional, uninstall.sh handles this)
+# 3. Delete installed app
 rm -rf ~/.claude/claude-pet
-
-# Delete source (optional)
-rm -rf ~/claude-pet
 ```
 
 ## Project Structure
@@ -177,6 +149,7 @@ claude-pet/
 │   └── StateManagerTests.swift          # 45+ unit tests for state machine
 ├── hooks/
 │   ├── install.sh                       # One-command setup (hooks + LaunchAgent)
+│   ├── uninstall.sh                     # Remove ClaudePet completely
 │   └── claude-pet-hook.sh               # Event→state mapper, POSTs to :23333
 ├── assets/                              # Generated GIF previews
 └── com.claude.pet.plist                  # LaunchAgent template
@@ -189,8 +162,8 @@ claude-pet/
 swift build
 
 # Build + restart app
-swift build && cp .build/debug/ClaudePet ClaudePet.app/Contents/MacOS/ClaudePet
-pkill -9 -f ClaudePet; sleep 2; open ClaudePet.app
+swift build && /bin/cp -f .build/debug/ClaudePet ~/.claude/claude-pet/ClaudePet
+pkill -9 -f ClaudePet; sleep 1; ~/.claude/claude-pet/ClaudePet &
 
 # Run tests
 swift build --build-tests 2>&1 && \
