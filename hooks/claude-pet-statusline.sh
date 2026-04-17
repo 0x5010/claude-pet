@@ -5,8 +5,8 @@
 INPUT=$(cat)
 [ -z "$INPUT" ] && exit 0
 
-JQ=/opt/homebrew/bin/jq
-[ ! -x "$JQ" ] && exit 0
+JQ=$(command -v jq 2>/dev/null)
+[ -z "$JQ" ] && exit 0
 
 SESSION_ID=$(printf '%s' "$INPUT" | "$JQ" -r '.session_id // ""' 2>/dev/null)
 [ -z "$SESSION_ID" ] && exit 0

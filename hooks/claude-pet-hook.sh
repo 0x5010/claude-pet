@@ -7,7 +7,8 @@ EVENT="$1"
 TMPJSON=$(mktemp /tmp/claude-pet-hook-XXXXXX)
 cat > "$TMPJSON"
 
-JQ=/opt/homebrew/bin/jq
+JQ=$(command -v jq 2>/dev/null)
+[ -z "$JQ" ] && exit 0
 jq_field() { "$JQ" -r "$1 // \"\"" < "$TMPJSON" 2>/dev/null; }
 
 SESSION_ID=$(jq_field '.session_id')
