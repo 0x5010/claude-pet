@@ -6,9 +6,7 @@ public final class NotificationBubble: NSObject {
     private var panel: NSPanel?
     private var dismissTimer: Timer?
     private var viewModel: BubbleViewModel?
-    private var permissionTimeoutAction: (() -> Void)?
     private var isShowingPermission = false
-    private var currentPermissionCallback: (() -> Void)?
 
     public override init() { super.init() }
 
@@ -19,7 +17,6 @@ public final class NotificationBubble: NSObject {
         duration: TimeInterval = 7.0
     ) {
         guard !isShowingPermission else { return }
-        permissionTimeoutAction = nil
 
         let vm = BubbleViewModel()
         let bubbleView = GlassNotificationView(title: title, message: message, viewModel: vm)
@@ -56,13 +53,11 @@ public final class NotificationBubble: NSObject {
         message: String,
         toolInput: String = "",
         relativeTo button: NSStatusBarButton?,
-        duration: TimeInterval = 20.0,
         onAllow: @escaping () -> Void,
         onDeny: @escaping () -> Void
     ) {
         dismiss()
         isShowingPermission = true
-        currentPermissionCallback = nil
 
         let vm = BubbleViewModel()
         let bubbleView = GlassPermissionView(
@@ -79,15 +74,13 @@ public final class NotificationBubble: NSObject {
                 self?.dismiss()
             }
         )
-        permissionTimeoutAction = onDeny
         let hostingView = NSHostingView(rootView: bubbleView)
         hostingView.setFrameSize(hostingView.fittingSize)
 
-        // Calculate panel size - let the view determine its own height
         let lineCount = toolInput.isEmpty ? 0 : toolInput.components(separatedBy: "\n").count
         let w: CGFloat = 360
-        let baseUIHeight: CGFloat = 100  // title + message + buttons
-        let commandHeight = min(120, max(60, CGFloat(min(lineCount, 5)) * 14 + 40))
+        let baseUIHeight: CGFloat = 100
+        let commandHeight = toolInput.isEmpty ? 0 : min(120, max(60, CGFloat(min(lineCount, 5)) * 14 + 40))
         let initialH = baseUIHeight + commandHeight + 40
         let h = initialH + 20
 
@@ -104,19 +97,10 @@ public final class NotificationBubble: NSObject {
                 vm.isVisible = true
             }
         }
-
-        dismissTimer = Timer.scheduledTimer(withTimeInterval: duration, repeats: false) { [weak self] _ in
-            Task { @MainActor in
-                guard let self else { return }
-                self.permissionTimeoutAction?()
-                self.animateOut()
-            }
-        }
     }
 
     public func dismissPermission() {
         guard isShowingPermission else { return }
-        permissionTimeoutAction = nil
         animateOut()
     }
 
@@ -164,9 +148,7 @@ public final class NotificationBubble: NSObject {
     private func animateOut() {
         dismissTimer?.invalidate()
         dismissTimer = nil
-        permissionTimeoutAction = nil
         isShowingPermission = false
-        currentPermissionCallback = nil
         guard let vm = viewModel, let panel = panel else { return }
         withAnimation(.easeIn(duration: 0.25)) {
             vm.isVisible = false
@@ -182,9 +164,7 @@ public final class NotificationBubble: NSObject {
     public func dismiss() {
         dismissTimer?.invalidate()
         dismissTimer = nil
-        permissionTimeoutAction = nil
         isShowingPermission = false
-        currentPermissionCallback = nil
         panel?.orderOut(nil)
         panel = nil
         viewModel = nil
@@ -292,38 +272,27 @@ private struct GlassPermissionView: View {
 
                 if !toolInput.isEmpty {
                     VStack(alignment: .leading, spacing: 4) {
-                        if canExpand {
-                            Button(action: {
-                                withAnimation(.snappy(duration: 0.2)) {
-                                    isExpanded.toggle()
-                                }
-                            }) {
-                                HStack(spacing: 4) {
-                                    Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                                        .font(.system(size: 10, weight: .semibold))
-                                    Text("Command (\(lineCount) lines)")
-                                        .font(.system(size: 10, weight: .medium))
-                                    Spacer()
-                                    if !isExpanded {
-                                        Text("+\(lineCount - 5) more")
-                                            .font(.system(size: 9, weight: .regular))
-                                            .foregroundStyle(.tertiary)
-                                    }
-                                }
-                                .foregroundStyle(.secondary)
+                        Button(action: {
+                            withAnimation(.snappy(duration: 0.2)) {
+                                isExpanded.toggle()
                             }
-                            .buttonStyle(.plain)
-                        } else {
+                        }) {
                             HStack(spacing: 4) {
-                                Image(systemName: "chevron.right")
+                                Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
                                     .font(.system(size: 10, weight: .semibold))
-                                    .foregroundStyle(.tertiary)
-                                Text("Command")
+                                Text(canExpand ? "Command (\(lineCount) lines)" : "Command")
                                     .font(.system(size: 10, weight: .medium))
-                                    .foregroundStyle(.secondary)
                                 Spacer()
+                                if canExpand && !isExpanded {
+                                    Text("+\(lineCount - 5) more")
+                                        .font(.system(size: 9, weight: .regular))
+                                        .foregroundStyle(.tertiary)
+                                }
                             }
+                            .foregroundStyle(.secondary)
+                            .contentShape(Rectangle())
                         }
+                        .buttonStyle(.plain)
 
                         ScrollView {
                             Text(displayText)

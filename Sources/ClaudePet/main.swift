@@ -40,7 +40,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
 
-        httpServer.onPermissionDismiss = { [weak self] sessionId in
+        httpServer.onPermissionResolved = { [weak self] sessionId in
             self?.multiStatusBarController?.dismissPermissionBubble(sessionId: sessionId)
         }
 

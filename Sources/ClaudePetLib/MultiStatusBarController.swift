@@ -315,7 +315,6 @@ private final class StatusBarInstance {
             message: "Allow \(toolText) to run?",
             toolInput: toolInput,
             relativeTo: statusItem.button,
-            duration: 20.0,
             onAllow: { onDecision(PermissionDecision(behavior: .allow)) },
             onDeny: { onDecision(PermissionDecision(behavior: .deny)) }
         )

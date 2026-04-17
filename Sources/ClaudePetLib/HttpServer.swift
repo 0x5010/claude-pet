@@ -44,14 +44,12 @@ public struct PermissionDecision {
 
 public final class HttpServer: @unchecked Sendable {
     private var listener: NWListener?
-    private var pendingPermissionConnections: [String: NWConnection] = [:]
-    private var permissionShownAt: [String: Date] = [:]
-    private let minBubbleDisplayTime: TimeInterval = 5.0
+    private var pendingPermissions: [String: PendingPermission] = [:]
 
     public var onStateEvent: ((HookEvent) -> Void)?
     public var onContextUpdate: ((String, ContextInfo) -> Void)?
     public var onPermissionRequest: ((PendingPermissionRequest) -> Void)?
-    public var onPermissionDismiss: ((String) -> Void)?  // sessionId
+    public var onPermissionResolved: ((String) -> Void)?  // sessionId - called when CLI resolves
 
     public init() {}
 
@@ -89,18 +87,9 @@ public final class HttpServer: @unchecked Sendable {
     private func handleConnection(_ connection: NWConnection) {
         connection.start(queue: .main)
 
-        connection.stateUpdateHandler = { [weak self] state in
-            switch state {
-            case .cancelled, .failed:
-                self?.checkPermissionConnectionClosed(connection)
-            default:
-                break
-            }
-        }
-
         connection.receive(minimumIncompleteLength: 1, maximumLength: 65536) { [weak self] data, _, isComplete, error in
             if isComplete || error != nil {
-                self?.checkPermissionConnectionClosed(connection)
+                self?.handleConnectionClosed(connection)
                 connection.cancel()
                 return
             }
@@ -112,28 +101,12 @@ public final class HttpServer: @unchecked Sendable {
         }
     }
 
-    private func checkPermissionConnectionClosed(_ connection: NWConnection) {
-        for (requestId, pendingConn) in pendingPermissionConnections {
-            if pendingConn === connection {
-                let sessionId = requestId.components(separatedBy: "_").first ?? ""
-                guard let shownAt = permissionShownAt[requestId] else { continue }
-
-                let elapsed = Date().timeIntervalSince(shownAt)
-                if elapsed >= minBubbleDisplayTime {
-                    pendingPermissionConnections.removeValue(forKey: requestId)
-                    permissionShownAt.removeValue(forKey: requestId)
-                    DispatchQueue.main.async {
-                        self.onPermissionDismiss?(sessionId)
-                    }
-                } else {
-                    let remainingTime = minBubbleDisplayTime - elapsed
-                    DispatchQueue.main.asyncAfter(deadline: .now() + remainingTime) { [weak self] in
-                        if self?.pendingPermissionConnections[requestId] != nil {
-                            self?.pendingPermissionConnections.removeValue(forKey: requestId)
-                            self?.permissionShownAt.removeValue(forKey: requestId)
-                            self?.onPermissionDismiss?(sessionId)
-                        }
-                    }
+    private func handleConnectionClosed(_ connection: NWConnection) {
+        for (requestId, pending) in pendingPermissions {
+            if pending.connection === connection {
+                pendingPermissions.removeValue(forKey: requestId)
+                DispatchQueue.main.async {
+                    self.onPermissionResolved?(pending.sessionId)
                 }
                 break
             }
@@ -209,18 +182,17 @@ public final class HttpServer: @unchecked Sendable {
                 sendResponse(connection: connection, status: 400, body: "missing session_id")
                 return
             }
-            let requestId = sessionId + "_" + UUID().uuidString
-            let pending = PendingPermissionRequest(
+            let requestId = UUID().uuidString
+            let request = PendingPermissionRequest(
                 requestId: requestId,
                 sessionId: sessionId,
                 toolName: json["tool_name"] as? String ?? "",
                 toolInput: Self.stringifyJSON(json["tool_input"])
             )
-            pendingPermissionConnections[requestId] = connection
-            permissionShownAt[requestId] = Date()
+            pendingPermissions[requestId] = PendingPermission(request: request, connection: connection)
 
             if let onPermissionRequest {
-                onPermissionRequest(pending)
+                onPermissionRequest(request)
             } else {
                 resolvePermission(requestId: requestId, decision: PermissionDecision(behavior: .deny, message: "permission handler unavailable"))
             }
@@ -230,8 +202,7 @@ public final class HttpServer: @unchecked Sendable {
     }
 
     public func resolvePermission(requestId: String, decision: PermissionDecision) {
-        guard let connection = pendingPermissionConnections.removeValue(forKey: requestId) else { return }
-        permissionShownAt.removeValue(forKey: requestId)
+        guard let pending = pendingPermissions.removeValue(forKey: requestId) else { return }
 
         var payload: [String: Any] = [
             "behavior": decision.behavior.rawValue
@@ -248,11 +219,11 @@ public final class HttpServer: @unchecked Sendable {
         ]
         let data = (try? JSONSerialization.data(withJSONObject: responseObj, options: [])) ?? Data("{}".utf8)
         let body = String(data: data, encoding: .utf8) ?? "{}"
-        sendResponse(connection: connection, status: 200, body: body)
+        sendResponse(connection: pending.connection, status: 200, body: body)
     }
 
     public func pendingPermissionCount() -> Int {
-        pendingPermissionConnections.count
+        pendingPermissions.count
     }
 
     private static func stringifyJSON(_ value: Any?) -> String {
@@ -273,4 +244,10 @@ public final class HttpServer: @unchecked Sendable {
             connection.cancel()
         })
     }
+}
+
+private struct PendingPermission {
+    let request: PendingPermissionRequest
+    let connection: NWConnection
+    var sessionId: String { request.sessionId }
 }
